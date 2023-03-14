@@ -667,7 +667,7 @@ get_system_info() {
         warning "Distribution auto-detection overridden by user. This is not guaranteed to work, and is not officially supported."
       fi
 
-      supported_compat_names="debian ubuntu centos fedora opensuse ol arch"
+      supported_compat_names="debian ubuntu centos fedora opensuse ol amzn arch"
 
       if str_in_list "${DISTRO}" "${supported_compat_names}"; then
           DISTRO_COMPAT_NAME="${DISTRO}"
@@ -691,11 +691,6 @@ get_system_info() {
       case "${DISTRO_COMPAT_NAME}" in
         centos|ol)
           SYSVERSION=$(echo "$SYSVERSION" | cut -d'.' -f1)
-          ;;
-        ubuntu|debian)
-          if [ -z "${SYSCODENAME}" ]; then
-            fatal "Could not determine ${DISTRO} release code name. This is required information on these systems." F0511
-          fi
           ;;
       esac
       ;;
@@ -964,9 +959,9 @@ handle_existing_install() {
           failmsg="We do not support trying to update or claim installations when we cannot determine the install type. You will need to uninstall the existing install using the same method you used to install it to proceed. ${claimonly_notice}"
           promptmsg="Attempting to update an existing install is not officially supported. It may work, but it also might break your system. ${claimonly_notice} Are you sure you want to continue?"
         fi
-        if [ "${INTERACTIVE}" -eq 0 ] && [ "${NETDATA_CLAIM_ONLY}" -eq 0 ]; then
+        if [ "${INTERACTIVE}" -eq 0 ] && [ "${ACTION}" != "claim" ]; then
           fatal "${failmsg}" F0106
-        elif [ "${INTERACTIVE}" -eq 1 ] && [ "${NETDATA_CLAIM_ONLY}" -eq 0 ]; then
+        elif [ "${INTERACTIVE}" -eq 1 ] && [ "${ACTION}" != "claim" ]; then
           if confirm "${promptmsg}"; then
             progress "OK, continuing"
           else
@@ -1274,7 +1269,7 @@ pkg_installed() {
           dpkg-query --show --showformat '${Status}' "${1}" 2>&1 | cut -f 1 -d ' ' | grep -q '^install$'
           return $?
           ;;
-        centos|fedora|opensuse|ol)
+        centos|fedora|opensuse|ol|amzn)
           rpm -q "${1}" > /dev/null 2>&1
           return $?
           ;;
@@ -1318,7 +1313,7 @@ netdata_avail_check() {
       env DEBIAN_FRONTEND=noninteractive apt-cache policy netdata | grep -q repo.netdata.cloud/repos/;
       return $?
       ;;
-    centos|fedora|ol)
+    centos|fedora|ol|amzn)
       # shellcheck disable=SC2086
       ${pm_cmd} search --nogpgcheck -v netdata | grep -qE 'Repo *: netdata(-edge)?$'
       return $?
@@ -1360,9 +1355,16 @@ check_special_native_deps() {
 try_package_install() {
   failed_refresh_msg="Failed to refresh repository metadata. ${BADNET_MSG} or by misconfiguration of one or more rpackage repositories in the system package manager configuration."
 
-  if [ -z "${DISTRO}" ] || [ "${DISTRO}" = "unknown" ]; then
+  if [ -z "${DISTRO_COMPAT_NAME}" ] || [ "${DISTRO_COMPAT_NAME}" = "unknown" ]; then
     warning "Unable to determine Linux distribution for native packages."
     return 2
+  elif [ -z "${SYSCODENAME}" ]; then
+    case "${DISTRO_COMPAT_NAME}" in
+      debian|ubuntu)
+        warning "Release codename not set. Unable to check availability of native packages for this system."
+        return 2
+        ;;
+    esac
   fi
 
   set_tmpdir
@@ -1471,6 +1473,23 @@ try_package_install() {
         pm_cmd="yum"
       fi
       repo_prefix="ol/${SYSVERSION}"
+      pkg_type="rpm"
+      pkg_suffix=".noarch"
+      pkg_vsep="-"
+      pkg_install_opts="${interactive_opts}"
+      repo_update_opts="${interactive_opts}"
+      uninstall_subcmd="remove"
+      INSTALL_TYPE="binpkg-rpm"
+      NATIVE_VERSION="${INSTALL_VERSION:+"-${INSTALL_VERSION}.${SYSARCH}"}"
+      ;;
+    amzn)
+      if command -v dnf > /dev/null; then
+        pm_cmd="dnf"
+        repo_subcmd="makecache"
+      else
+        pm_cmd="yum"
+      fi
+      repo_prefix="amazonlinux/${SYSVERSION}"
       pkg_type="rpm"
       pkg_suffix=".noarch"
       pkg_vsep="-"

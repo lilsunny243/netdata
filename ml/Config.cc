@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-#include "nml.h"
+#include "ml-private.h"
 
 /*
  * Global configuration instance to be shared between training and
  * prediction threads.
  */
-nml_config_t Cfg;
+ml_config_t Cfg;
 
 template <typename T>
 static T clamp(const T& Value, const T& Min, const T& Max) {
@@ -16,7 +16,7 @@ static T clamp(const T& Value, const T& Min, const T& Max) {
 /*
  * Initialize global configuration variable.
  */
-void nml_config_load(nml_config_t *cfg) {
+void ml_config_load(ml_config_t *cfg) {
     const char *config_section_ml = CONFIG_SECTION_ML;
 
     bool enable_anomaly_detection = config_get_boolean(config_section_ml, "enabled", true);
@@ -101,12 +101,12 @@ void nml_config_load(nml_config_t *cfg) {
     cfg->dimension_anomaly_score_threshold = dimension_anomaly_rate_threshold;
 
     cfg->hosts_to_skip = config_get(config_section_ml, "hosts to skip from training", "!*");
-    cfg->sp_host_to_skip = simple_pattern_create(cfg->hosts_to_skip.c_str(), NULL, SIMPLE_PATTERN_EXACT);
+    cfg->sp_host_to_skip = simple_pattern_create(cfg->hosts_to_skip.c_str(), NULL, SIMPLE_PATTERN_EXACT, true);
 
     // Always exclude anomaly_detection charts from training.
     cfg->charts_to_skip = "anomaly_detection.* ";
     cfg->charts_to_skip += config_get(config_section_ml, "charts to skip from training", "netdata.*");
-    cfg->sp_charts_to_skip = simple_pattern_create(cfg->charts_to_skip.c_str(), NULL, SIMPLE_PATTERN_EXACT);
+    cfg->sp_charts_to_skip = simple_pattern_create(cfg->charts_to_skip.c_str(), NULL, SIMPLE_PATTERN_EXACT, true);
 
     cfg->stream_anomaly_detection_charts = config_get_boolean(config_section_ml, "stream anomaly detection charts", true);
 }

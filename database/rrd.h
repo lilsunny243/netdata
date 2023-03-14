@@ -30,9 +30,9 @@ typedef struct rrdhost_acquired RRDHOST_ACQUIRED;
 typedef struct rrdset_acquired RRDSET_ACQUIRED;
 typedef struct rrddim_acquired RRDDIM_ACQUIRED;
 
-typedef struct ml_host ml_host_t;
-typedef struct ml_chart ml_chart_t;
-typedef struct ml_dimension ml_dimension_t;
+typedef struct ml_host rrd_ml_host_t;
+typedef struct ml_chart rrd_ml_chart_t;
+typedef struct ml_dimension rrd_ml_dimension_t;
 
 typedef enum __attribute__ ((__packed__)) {
     QUERY_SOURCE_UNKNOWN = 0,
@@ -148,7 +148,7 @@ typedef enum __attribute__ ((__packed__)) rrdset_type {
 RRDSET_TYPE rrdset_type_id(const char *name);
 const char *rrdset_type_name(RRDSET_TYPE chart_type);
 
-#include "rrdcontext.h"
+#include "contexts/rrdcontext.h"
 
 extern bool unittest_running;
 extern bool dbengine_enabled;
@@ -297,7 +297,8 @@ int rrdlabels_sorted_walkthrough_read(DICTIONARY *labels, int (*callback)(const 
 
 void rrdlabels_log_to_buffer(DICTIONARY *labels, BUFFER *wb);
 bool rrdlabels_match_simple_pattern(DICTIONARY *labels, const char *simple_pattern_txt);
-bool rrdlabels_match_simple_pattern_parsed(DICTIONARY *labels, SIMPLE_PATTERN *pattern, char equal);
+
+bool rrdlabels_match_simple_pattern_parsed(DICTIONARY *labels, SIMPLE_PATTERN *pattern, char equal, size_t *searches);
 int rrdlabels_to_buffer(DICTIONARY *labels, BUFFER *wb, const char *before_each, const char *equal, const char *quote, const char *between_them, bool (*filter_callback)(const char *name, const char *value, RRDLABEL_SRC ls, void *data), void *filter_data, void (*name_sanitizer)(char *dst, const char *src, size_t dst_size), void (*value_sanitizer)(char *dst, const char *src, size_t dst_size));
 void rrdlabels_to_buffer_json_members(DICTIONARY *labels, BUFFER *wb);
 
@@ -362,7 +363,7 @@ struct rrddim {
     // ------------------------------------------------------------------------
     // operational state members
 
-    ml_dimension_t *ml_dimension;                   // machine learning data about this dimension
+    rrd_ml_dimension_t *ml_dimension;                   // machine learning data about this dimension
 
     // ------------------------------------------------------------------------
     // linking to siblings and parents
@@ -625,7 +626,7 @@ struct rrdset {
     DICTIONARY *rrddimvar_root_index;               // dimension variables
                                                     // we use this dictionary to manage their allocation
 
-    ml_chart_t *ml_chart;
+    rrd_ml_chart_t *ml_chart;
 
     // ------------------------------------------------------------------------
     // operational state members
@@ -1066,7 +1067,7 @@ struct rrdhost {
 
     // ------------------------------------------------------------------------
     // ML handle
-    ml_host_t *ml_host;
+    rrd_ml_host_t *ml_host;
 
     // ------------------------------------------------------------------------
     // Support for host-level labels
@@ -1086,9 +1087,11 @@ struct rrdhost {
     DICTIONARY *rrdvars;                            // the host's chart variables index
                                                     // this includes custom host variables
 
-    RRDCONTEXTS *rrdctx_hub_queue;
-    RRDCONTEXTS *rrdctx_post_processing_queue;
-    RRDCONTEXTS *rrdctx;
+    struct {
+        DICTIONARY *contexts;
+        DICTIONARY *hub_queue;
+        DICTIONARY *pp_queue;
+    } rrdctx;
 
     uuid_t  host_uuid;                              // Global GUID for this host
     uuid_t  *node_id;                               // Cloud node_id
@@ -1355,12 +1358,12 @@ void rrdset_delete_files(RRDSET *st);
 void rrdset_save(RRDSET *st);
 void rrdset_free(RRDSET *st);
 
+void rrddim_free(RRDSET *st, RRDDIM *rd);
+
 #ifdef NETDATA_RRD_INTERNALS
 
 char *rrdhost_cache_dir_for_rrdset_alloc(RRDHOST *host, const char *id);
 const char *rrdset_cache_dir(RRDSET *st);
-
-void rrddim_free(RRDSET *st, RRDDIM *rd);
 
 void rrdset_reset(RRDSET *st);
 void rrdset_delete_obsolete_dimensions(RRDSET *st);

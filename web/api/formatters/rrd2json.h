@@ -17,6 +17,7 @@ typedef enum {
     DATASOURCE_SSV_COMMA        = 9,
     DATASOURCE_CSV_JSON_ARRAY   = 10,
     DATASOURCE_CSV_MARKDOWN     = 11,
+    DATASOURCE_JSON2            = 12,
 } DATASOURCE_FORMAT;
 
 #include "web/api/web_api_v1.h"
@@ -40,6 +41,7 @@ typedef enum {
 #define API_RELATIVE_TIME_MAX (3 * 365 * 86400)
 
 #define DATASOURCE_FORMAT_JSON "json"
+#define DATASOURCE_FORMAT_JSON2 "json2"
 #define DATASOURCE_FORMAT_DATATABLE_JSON "datatable"
 #define DATASOURCE_FORMAT_DATATABLE_JSONP "datasource"
 #define DATASOURCE_FORMAT_JSONP "jsonp"
@@ -56,6 +58,12 @@ void rrd_stats_api_v1_chart(RRDSET *st, BUFFER *wb);
 const char *rrdr_format_to_string(DATASOURCE_FORMAT format);
 
 int data_query_execute(ONEWAYALLOC *owa, BUFFER *wb, struct query_target *qt, time_t *latest_timestamp);
+
+void rrdr_json_group_by_labels(BUFFER *wb, const char *key, RRDR *r, RRDR_OPTIONS options);
+
+struct query_target;
+bool query_target_has_percentage_units(struct query_target *qt);
+bool query_target_aggregatable(struct query_target *qt);
 
 int rrdset2value_api_v1(
         RRDSET *st

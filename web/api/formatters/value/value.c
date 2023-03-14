@@ -4,9 +4,7 @@
 
 
 inline NETDATA_DOUBLE rrdr2value(RRDR *r, long i, RRDR_OPTIONS options, int *all_values_are_null, NETDATA_DOUBLE *anomaly_rate) {
-    QUERY_TARGET *qt = r->internal.qt;
-    long c;
-    const long used = qt->query.used;
+    size_t c;
 
     NETDATA_DOUBLE *cn = &r->v[ i * r->d ];
     RRDR_VALUE_FLAGS *co = &r->o[ i * r->d ];
@@ -18,10 +16,9 @@ inline NETDATA_DOUBLE rrdr2value(RRDR *r, long i, RRDR_OPTIONS options, int *all
     NETDATA_DOUBLE total = 1;
     NETDATA_DOUBLE total_anomaly_rate = 0;
 
-    int set_min_max = 0;
     if(unlikely(options & RRDR_OPTION_PERCENTAGE)) {
         total = 0;
-        for (c = 0; c < used; c++) {
+        for (c = 0; c < r->d ; c++) {
             if(unlikely(!(r->od[c] & RRDR_DIMENSION_QUERIED))) continue;
             NETDATA_DOUBLE n = cn[c];
 
@@ -32,11 +29,10 @@ inline NETDATA_DOUBLE rrdr2value(RRDR *r, long i, RRDR_OPTIONS options, int *all
         }
         // prevent a division by zero
         if(total == 0) total = 1;
-        set_min_max = 1;
     }
 
     // for each dimension
-    for (c = 0; c < used; c++) {
+    for (c = 0; c < r->d ; c++) {
         if(!rrdr_dimension_should_be_exposed(r->od[c], options))
             continue;
 
@@ -48,13 +44,13 @@ inline NETDATA_DOUBLE rrdr2value(RRDR *r, long i, RRDR_OPTIONS options, int *all
         if(unlikely(options & RRDR_OPTION_PERCENTAGE)) {
             n = n * 100 / total;
 
-            if(unlikely(set_min_max)) {
+            if(unlikely(c == 0)) {
                 r->view.min = r->view.max = n;
-                set_min_max = 0;
             }
-
-            if(n < r->view.min) r->view.min = n;
-            if(n > r->view.max) r->view.max = n;
+            else {
+                if (n < r->view.min) r->view.min = n;
+                if (n > r->view.max) r->view.max = n;
+            }
         }
 
         if(unlikely(init)) {
@@ -147,7 +143,7 @@ QUERY_VALUE rrdmetric2value(RRDHOST *host,
         };
 
         for(size_t t = 0; t < storage_tiers ;t++)
-            qv.storage_points_per_tier[t] = r->stats.tier_points_read[t];
+            qv.storage_points_per_tier[t] = r->internal.qt->db.tiers[t].points;
 
         long i = (!(options & RRDR_OPTION_REVERSED))?(long)rrdr_rows(r) - 1:0;
         int all_values_are_null = 0;

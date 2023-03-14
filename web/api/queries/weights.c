@@ -118,7 +118,7 @@ static void results_header_to_json(DICTIONARY *results __maybe_unused, BUFFER *w
                                    size_t examined_dimensions __maybe_unused, usec_t duration,
                                    WEIGHTS_STATS *stats) {
 
-    buffer_json_initialize(wb, "\"", "\"", 0, true);
+    buffer_json_initialize(wb, "\"", "\"", 0, true, false);
     buffer_json_member_add_time_t(wb, "after", after);
     buffer_json_member_add_time_t(wb, "before", before);
     buffer_json_member_add_time_t(wb, "duration", before - after);
@@ -501,7 +501,7 @@ NETDATA_DOUBLE *rrd2rrdr_ks2(
     stats->result_points += r->stats.result_points_generated;
     stats->db_points += r->stats.db_points_read;
     for(size_t tr = 0; tr < storage_tiers ; tr++)
-        stats->db_points_per_tier[tr] += r->stats.tier_points_read[tr];
+        stats->db_points_per_tier[tr] += r->internal.qt->db.tiers[tr].points;
 
     if(r->d != 1) {
         error("WEIGHTS: on query '%s' expected 1 dimension in RRDR but got %zu", r->internal.qt->id, r->d);
@@ -804,7 +804,7 @@ int web_api_v1_weights(
     usec_t timeout_usec = timeout * USEC_PER_MS;
     usec_t started_usec = now_realtime_usec();
 
-    if(!rrdr_relative_window_to_absolute(&after, &before))
+    if(!rrdr_relative_window_to_absolute(&after, &before, NULL))
         buffer_no_cacheable(wb);
 
     if (before <= after) {
@@ -820,7 +820,7 @@ int web_api_v1_weights(
         if(baseline_before <= API_RELATIVE_TIME_MAX)
             baseline_before += after;
 
-        rrdr_relative_window_to_absolute(&baseline_after, &baseline_before);
+        rrdr_relative_window_to_absolute(&baseline_after, &baseline_before, NULL);
 
         if (baseline_before <= baseline_after) {
             resp = HTTP_RESP_BAD_REQUEST;

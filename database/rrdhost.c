@@ -229,7 +229,8 @@ static void rrdhost_initialize_rrdpush_sender(RRDHOST *host,
         rrdpush_destinations_init(host);
 
         host->rrdpush_send_api_key = strdupz(rrdpush_api_key);
-        host->rrdpush_send_charts_matching = simple_pattern_create(rrdpush_send_charts_matching, NULL, SIMPLE_PATTERN_EXACT);
+        host->rrdpush_send_charts_matching = simple_pattern_create(rrdpush_send_charts_matching, NULL,
+                                                                   SIMPLE_PATTERN_EXACT, true);
 
         rrdhost_option_set(host, RRDHOST_OPTION_SENDER_ENABLED);
     }
@@ -365,7 +366,6 @@ int is_legacy = 1;
     rrdfamily_index_init(host);
     rrdcalctemplate_index_init(host);
     rrdcalc_rrdhost_index_init(host);
-    metaqueue_host_update_info(host);
 
     if (host->rrd_memory_mode == RRD_MEMORY_MODE_DBENGINE) {
 #ifdef ENABLE_DBENGINE
@@ -520,12 +520,12 @@ int is_legacy = 1;
     );
 
     if(!archived)
-        rrdhost_flag_set(host,RRDHOST_FLAG_METADATA_INFO | RRDHOST_FLAG_METADATA_UPDATE);
+        metaqueue_host_update_info(host);
 
     rrdhost_load_rrdcontext_data(host);
     if (!archived) {
         ml_host_new(host);
-        ml_start_training_thread(host);
+        ml_host_start_training_thread(host);
     } else
         rrdhost_flag_set(host, RRDHOST_FLAG_ARCHIVED | RRDHOST_FLAG_ORPHAN);
 
@@ -642,7 +642,7 @@ static void rrdhost_update(RRDHOST *host
         host->rrdpush_replication_step = rrdpush_replication_step;
 
         ml_host_new(host);
-        ml_start_training_thread(host);
+        ml_host_start_training_thread(host);
         
         rrdhost_load_rrdcontext_data(host);
         info("Host %s is not in archived mode anymore", rrdhost_hostname(host));
@@ -1145,7 +1145,7 @@ void rrdhost_free___while_having_rrd_wrlock(RRDHOST *host, bool force) {
     rrdcalctemplate_index_destroy(host);
 
     // cleanup ML resources
-    ml_stop_training_thread(host);
+    ml_host_stop_training_thread(host);
     ml_host_delete(host);
 
     freez(host->exporting_flags);
@@ -1239,11 +1239,10 @@ void rrdhost_free_all(void) {
 
 void rrd_finalize_collection_for_all_hosts(void) {
     RRDHOST *host;
-    rrd_wrlock();
-    rrdhost_foreach_read(host) {
+    dfe_start_reentrant(rrdhost_root_index, host) {
         rrdhost_finalize_collection(host);
     }
-    rrd_unlock();
+    dfe_done(host);
 }
 
 // ----------------------------------------------------------------------------
@@ -1268,25 +1267,25 @@ struct rrdhost_system_info *rrdhost_labels_to_system_info(DICTIONARY *labels) {
     struct rrdhost_system_info *info = callocz(1, sizeof(struct rrdhost_system_info));
     info->hops = 1;
 
-    rrdlabels_get_value_strdup_or_null(labels, &localhost->system_info->cloud_provider_type, "_cloud_provider_type");
-    rrdlabels_get_value_strdup_or_null(labels, &localhost->system_info->cloud_instance_type, "_cloud_instance_type");
-    rrdlabels_get_value_strdup_or_null(labels, &localhost->system_info->cloud_instance_region, "_cloud_instance_region");
-    rrdlabels_get_value_strdup_or_null(labels, &localhost->system_info->host_os_name, "_os_name");
-    rrdlabels_get_value_strdup_or_null(labels, &localhost->system_info->host_os_version, "_os_version");
-    rrdlabels_get_value_strdup_or_null(labels, &localhost->system_info->kernel_version, "_kernel_version");
-    rrdlabels_get_value_strdup_or_null(labels, &localhost->system_info->host_cores, "_system_cores");
-    rrdlabels_get_value_strdup_or_null(labels, &localhost->system_info->host_cpu_freq, "_system_cpu_freq");
-    rrdlabels_get_value_strdup_or_null(labels, &localhost->system_info->host_ram_total, "_system_ram_total");
-    rrdlabels_get_value_strdup_or_null(labels, &localhost->system_info->host_disk_space, "_system_disk_space");
-    rrdlabels_get_value_strdup_or_null(labels, &localhost->system_info->architecture, "_architecture");
-    rrdlabels_get_value_strdup_or_null(labels, &localhost->system_info->virtualization, "_virtualization");
-    rrdlabels_get_value_strdup_or_null(labels, &localhost->system_info->container, "_container");
-    rrdlabels_get_value_strdup_or_null(labels, &localhost->system_info->container_detection, "_container_detection");
-    rrdlabels_get_value_strdup_or_null(labels, &localhost->system_info->virt_detection, "_virt_detection");
-    rrdlabels_get_value_strdup_or_null(labels, &localhost->system_info->is_k8s_node, "_is_k8s_node");
-    rrdlabels_get_value_strdup_or_null(labels, &localhost->system_info->install_type, "_install_type");
-    rrdlabels_get_value_strdup_or_null(labels, &localhost->system_info->prebuilt_arch, "_prebuilt_arch");
-    rrdlabels_get_value_strdup_or_null(labels, &localhost->system_info->prebuilt_dist, "_prebuilt_dist");
+    rrdlabels_get_value_strdup_or_null(labels, &info->cloud_provider_type, "_cloud_provider_type");
+    rrdlabels_get_value_strdup_or_null(labels, &info->cloud_instance_type, "_cloud_instance_type");
+    rrdlabels_get_value_strdup_or_null(labels, &info->cloud_instance_region, "_cloud_instance_region");
+    rrdlabels_get_value_strdup_or_null(labels, &info->host_os_name, "_os_name");
+    rrdlabels_get_value_strdup_or_null(labels, &info->host_os_version, "_os_version");
+    rrdlabels_get_value_strdup_or_null(labels, &info->kernel_version, "_kernel_version");
+    rrdlabels_get_value_strdup_or_null(labels, &info->host_cores, "_system_cores");
+    rrdlabels_get_value_strdup_or_null(labels, &info->host_cpu_freq, "_system_cpu_freq");
+    rrdlabels_get_value_strdup_or_null(labels, &info->host_ram_total, "_system_ram_total");
+    rrdlabels_get_value_strdup_or_null(labels, &info->host_disk_space, "_system_disk_space");
+    rrdlabels_get_value_strdup_or_null(labels, &info->architecture, "_architecture");
+    rrdlabels_get_value_strdup_or_null(labels, &info->virtualization, "_virtualization");
+    rrdlabels_get_value_strdup_or_null(labels, &info->container, "_container");
+    rrdlabels_get_value_strdup_or_null(labels, &info->container_detection, "_container_detection");
+    rrdlabels_get_value_strdup_or_null(labels, &info->virt_detection, "_virt_detection");
+    rrdlabels_get_value_strdup_or_null(labels, &info->is_k8s_node, "_is_k8s_node");
+    rrdlabels_get_value_strdup_or_null(labels, &info->install_type, "_install_type");
+    rrdlabels_get_value_strdup_or_null(labels, &info->prebuilt_arch, "_prebuilt_arch");
+    rrdlabels_get_value_strdup_or_null(labels, &info->prebuilt_dist, "_prebuilt_dist");
 
     return info;
 }
@@ -1441,7 +1440,7 @@ void rrdhost_finalize_collection(RRDHOST *host) {
     info("RRD: 'host:%s' stopping data collection...", rrdhost_hostname(host));
 
     RRDSET *st;
-    rrdset_foreach_write(st, host)
+    rrdset_foreach_read(st, host)
         rrdset_finalize_collection(st, true);
     rrdset_foreach_done(st);
 }

@@ -1140,7 +1140,7 @@ fi
 
 # Check if submodules have not been fetched. Fail if ML was explicitly requested.
 AC_MSG_CHECKING([if git submodules are present for machine learning functionality])
-if test -f "ml/dlib/dlib/all/source.cpp" -a -f "ml/json/single_include/nlohmann/json.hpp"; then
+if test -f "ml/dlib/dlib/all/source.cpp"; then
     AC_MSG_RESULT([yes])
     have_ml_submodules="yes"
 else
@@ -1720,6 +1720,7 @@ AC_CONFIG_FILES([
     collectors/perf.plugin/Makefile
     daemon/Makefile
     database/Makefile
+    database/contexts/Makefile
     database/engine/Makefile
     database/ram/Makefile
     database/sqlite/Makefile
