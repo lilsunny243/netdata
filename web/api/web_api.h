@@ -9,6 +9,12 @@
 #include "web/api/health/health_cmdapi.h"
 #include "web/api/queries/weights.h"
 
+extern bool netdata_is_protected_by_bearer;
+extern DICTIONARY *netdata_authorized_bearers;
+bool api_check_bearer_token(struct web_client *w);
+bool extract_bearer_token_from_request(struct web_client *w, char *dst, size_t dst_len);
+void bearer_tokens_init(void);
+
 struct web_api_command {
     const char *command;
     uint32_t hash;
@@ -18,7 +24,7 @@ struct web_api_command {
 
 struct web_client;
 
-int web_client_api_request_vX(RRDHOST *host, struct web_client *w, char *url, struct web_api_command *api_commands);
+int web_client_api_request_vX(RRDHOST *host, struct web_client *w, char *url_path_endpoint, struct web_api_command *api_commands);
 
 static inline void fix_google_param(char *s) {
     if(unlikely(!s || !*s)) return;
@@ -28,6 +34,8 @@ static inline void fix_google_param(char *s) {
             *s = '_';
     }
 }
+
+int web_client_api_request_weights(RRDHOST *host, struct web_client *w, char *url, WEIGHTS_METHOD method, WEIGHTS_FORMAT format, size_t api_version);
 
 bool web_client_interrupt_callback(void *data);
 

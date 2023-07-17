@@ -6,6 +6,10 @@
 #include "../string/utf8.h"
 #include "../libnetdata.h"
 
+#ifdef ENABLE_H2O
+#include "h2o/memory.h"
+#endif
+
 #define WEB_DATA_LENGTH_INCREASE_STEP 1024
 
 #define BUFFER_JSON_MAX_DEPTH 32 // max is 255
@@ -57,6 +61,11 @@ typedef enum __attribute__ ((__packed__)) {
     CT_IMAGE_ICNS,
     CT_IMAGE_BMP,
     CT_PROMETHEUS,
+    CT_AUDIO_MPEG,
+    CT_AUDIO_OGG,
+    CT_VIDEO_MP4,
+    CT_APPLICATION_PDF,
+    CT_APPLICATION_ZIP,
 } HTTP_CONTENT_TYPE;
 
 typedef struct web_buffer {
@@ -129,6 +138,10 @@ void buffer_char_replace(BUFFER *wb, char from, char to);
 
 void buffer_print_sn_flags(BUFFER *wb, SN_FLAGS flags, bool send_anomaly_bit);
 
+#ifdef ENABLE_H2O
+h2o_iovec_t buffer_to_h2o_iovec(BUFFER *wb);
+#endif
+
 static inline void buffer_need_bytes(BUFFER *buffer, size_t needed_free_size) {
     if(unlikely(buffer->len + needed_free_size >= buffer->size))
         buffer_increase(buffer, needed_free_size + 1);
@@ -150,6 +163,35 @@ static inline void _buffer_json_depth_push(BUFFER *wb, BUFFER_JSON_NODE_TYPE typ
 
 static inline void _buffer_json_depth_pop(BUFFER *wb) {
     wb->json.depth--;
+}
+
+static inline void buffer_fast_charcat(BUFFER *wb, const char c) {
+
+    buffer_need_bytes(wb, 2);
+    *(&wb->buffer[wb->len]) = c;
+    wb->len += 1;
+    wb->buffer[wb->len] = '\0';
+
+    buffer_overflow_check(wb);
+}
+
+static inline void buffer_fast_rawcat(BUFFER *wb, const char *txt, size_t len) {
+    if(unlikely(!txt || !*txt || !len)) return;
+
+    buffer_need_bytes(wb, len + 1);
+
+    const char *t = txt;
+    const char *e = &txt[len];
+
+    char *d = &wb->buffer[wb->len];
+
+    while(t != e)
+        *d++ = *t++;
+
+    wb->len += len;
+    wb->buffer[wb->len] = '\0';
+
+    buffer_overflow_check(wb);
 }
 
 static inline void buffer_fast_strcat(BUFFER *wb, const char *txt, size_t len) {
@@ -196,6 +238,25 @@ static inline void buffer_strcat(BUFFER *wb, const char *txt) {
     }
 
     buffer_need_bytes(wb, 1);
+    wb->buffer[wb->len] = '\0';
+
+    buffer_overflow_check(wb);
+}
+
+static inline void buffer_strncat(BUFFER *wb, const char *txt, size_t len) {
+    if(unlikely(!txt || !*txt)) return;
+
+    const char *t = txt;
+    buffer_need_bytes(wb, len + 1);
+    char *s = &wb->buffer[wb->len];
+    char *d = s;
+    const char *e = &wb->buffer[wb->len + len];
+
+    while(*t && d < e)
+        *d++ = *t++;
+
+    wb->len += d - s;
+
     wb->buffer[wb->len] = '\0';
 
     buffer_overflow_check(wb);
@@ -701,7 +762,7 @@ static inline void buffer_json_member_add_uuid(BUFFER *wb, const char *key, uuid
     buffer_print_json_key(wb, key);
     buffer_fast_strcat(wb, ":", 1);
 
-    if(value) {
+    if(value && !uuid_is_null(*value)) {
         char uuid[GUID_LEN + 1];
         uuid_unparse_lower(*value, uuid);
         buffer_json_add_string_value(wb, uuid);
@@ -752,6 +813,14 @@ static inline void buffer_json_add_array_item_double(BUFFER *wb, NETDATA_DOUBLE 
         buffer_fast_strcat(wb, ",", 1);
 
     buffer_print_netdata_double(wb, value);
+    wb->json.stack[wb->json.depth].count++;
+}
+
+static inline void buffer_json_add_array_item_int64(BUFFER *wb, int64_t value) {
+    if(wb->json.stack[wb->json.depth].count)
+        buffer_fast_strcat(wb, ",", 1);
+
+    buffer_print_int64(wb, value);
     wb->json.stack[wb->json.depth].count++;
 }
 
@@ -852,6 +921,201 @@ static inline void buffer_json_array_close(BUFFER *wb) {
 #endif
     buffer_fast_strcat(wb, "]", 1);
     _buffer_json_depth_pop(wb);
+}
+
+typedef enum __attribute__((packed)) {
+    RRDF_FIELD_OPTS_NONE         = 0,
+    RRDF_FIELD_OPTS_UNIQUE_KEY   = (1 << 0), // the field is the unique key of the row
+    RRDF_FIELD_OPTS_VISIBLE      = (1 << 1), // the field should be visible by default
+    RRDF_FIELD_OPTS_STICKY       = (1 << 2), // the field should be sticky
+} RRDF_FIELD_OPTIONS;
+
+typedef enum __attribute__((packed)) {
+    RRDF_FIELD_TYPE_INTEGER,
+    RRDF_FIELD_TYPE_STRING,
+    RRDF_FIELD_TYPE_DETAIL_STRING,
+    RRDF_FIELD_TYPE_BAR_WITH_INTEGER,
+    RRDF_FIELD_TYPE_DURATION,
+    RRDF_FIELD_TYPE_TIMESTAMP,
+    RRDF_FIELD_TYPE_ARRAY,
+} RRDF_FIELD_TYPE;
+
+static inline const char *rrdf_field_type_to_string(RRDF_FIELD_TYPE type) {
+    switch(type) {
+        default:
+        case RRDF_FIELD_TYPE_INTEGER:
+            return "integer";
+
+        case RRDF_FIELD_TYPE_STRING:
+            return "string";
+
+        case RRDF_FIELD_TYPE_DETAIL_STRING:
+            return "detail-string";
+
+        case RRDF_FIELD_TYPE_BAR_WITH_INTEGER:
+            return "bar-with-integer";
+
+        case RRDF_FIELD_TYPE_DURATION:
+            return "duration";
+
+        case RRDF_FIELD_TYPE_TIMESTAMP:
+            return "timestamp";
+
+        case RRDF_FIELD_TYPE_ARRAY:
+            return "array";
+    }
+}
+
+typedef enum __attribute__((packed)) {
+    RRDF_FIELD_VISUAL_VALUE,    // show the value, possibly applying a transformation
+    RRDF_FIELD_VISUAL_BAR,      // show the value and a bar, respecting the max field to fill the bar at 100%
+    RRDF_FIELD_VISUAL_PILL,     // array of values (transformation is respected)
+} RRDF_FIELD_VISUAL;
+
+static inline const char *rrdf_field_visual_to_string(RRDF_FIELD_VISUAL visual) {
+    switch(visual) {
+        default:
+        case RRDF_FIELD_VISUAL_VALUE:
+            return "value";
+
+        case RRDF_FIELD_VISUAL_BAR:
+            return "bar";
+
+        case RRDF_FIELD_VISUAL_PILL:
+            return "pill";
+    }
+}
+
+typedef enum __attribute__((packed)) {
+    RRDF_FIELD_TRANSFORM_NONE,      // show the value as-is
+    RRDF_FIELD_TRANSFORM_NUMBER,    // show the value repsecting the decimal_points
+    RRDF_FIELD_TRANSFORM_DURATION,  // transform as duration in second to a human readable duration
+    RRDF_FIELD_TRANSFORM_DATETIME,  // UNIX epoch timestamp in ms
+} RRDF_FIELD_TRANSFORM;
+
+static inline const char *rrdf_field_transform_to_string(RRDF_FIELD_TRANSFORM transform) {
+    switch(transform) {
+        default:
+        case RRDF_FIELD_TRANSFORM_NONE:
+            return "none";
+
+        case RRDF_FIELD_TRANSFORM_NUMBER:
+            return "number";
+
+        case RRDF_FIELD_TRANSFORM_DURATION:
+            return "duration";
+
+        case RRDF_FIELD_TRANSFORM_DATETIME:
+            return "datetime";
+    }
+}
+
+typedef enum __attribute__((packed)) {
+    RRDF_FIELD_SORT_ASCENDING  = (1 << 0),
+    RRDF_FIELD_SORT_DESCENDING = (1 << 1),
+
+    RRDF_FIELD_SORT_FIXED      = (1 << 7),
+} RRDF_FIELD_SORT;
+
+static inline const char *rrdf_field_sort_to_string(RRDF_FIELD_SORT sort) {
+    if(sort & RRDF_FIELD_SORT_DESCENDING)
+        return "descending";
+
+    else
+        return "ascending";
+}
+
+typedef enum __attribute__((packed)) {
+    RRDF_FIELD_SUMMARY_UNIQUECOUNT,     // Finds the number of unique values of a group of rows
+    RRDF_FIELD_SUMMARY_SUM,             // Sums the values of a group of rows
+    RRDF_FIELD_SUMMARY_MIN,             // Finds the minimum value of a group of rows
+    RRDF_FIELD_SUMMARY_MAX,             // Finds the maximum value of a group of rows
+    // RRDF_FIELD_SUMMARY_EXTENT,          // Finds the minimum and maximum values of a group of rows
+    RRDF_FIELD_SUMMARY_MEAN,            // Finds the mean/average value of a group of rows
+    RRDF_FIELD_SUMMARY_MEDIAN,          // Finds the median value of a group of rows
+    // RRDF_FIELD_SUMMARY_UNIQUE,         // Finds the unique values of a group of rows
+    RRDF_FIELD_SUMMARY_COUNT,           // Calculates the number of rows in a group
+} RRDF_FIELD_SUMMARY;
+
+static inline const char *rrdf_field_summary_to_string(RRDF_FIELD_SUMMARY summary) {
+    switch(summary) {
+        default:
+        case RRDF_FIELD_SUMMARY_COUNT:
+            return "count";
+
+        case RRDF_FIELD_SUMMARY_UNIQUECOUNT:
+            return "uniqueCount";
+
+        case RRDF_FIELD_SUMMARY_SUM:
+            return "sum";
+
+        case RRDF_FIELD_SUMMARY_MIN:
+            return "min";
+
+        case RRDF_FIELD_SUMMARY_MEAN:
+            return "mean";
+
+        case RRDF_FIELD_SUMMARY_MEDIAN:
+            return "median";
+
+        case RRDF_FIELD_SUMMARY_MAX:
+            return "max";
+    }
+}
+
+typedef enum __attribute__((packed)) {
+    RRDF_FIELD_FILTER_RANGE,
+    RRDF_FIELD_FILTER_MULTISELECT,
+} RRDF_FIELD_FILTER;
+
+static inline const char *rrdf_field_filter_to_string(RRDF_FIELD_FILTER filter) {
+    switch(filter) {
+        default:
+        case RRDF_FIELD_FILTER_RANGE:
+            return "range";
+
+        case RRDF_FIELD_FILTER_MULTISELECT:
+            return "multiselect";
+    }
+}
+
+static inline void
+buffer_rrdf_table_add_field(BUFFER *wb, size_t field_id, const char *key, const char *name, RRDF_FIELD_TYPE type,
+                            RRDF_FIELD_VISUAL visual, RRDF_FIELD_TRANSFORM transform, size_t decimal_points,
+                            const char *units, NETDATA_DOUBLE max, RRDF_FIELD_SORT sort, const char *pointer_to,
+                            RRDF_FIELD_SUMMARY summary, RRDF_FIELD_FILTER filter, RRDF_FIELD_OPTIONS options,
+                            const char *default_value) {
+
+    buffer_json_member_add_object(wb, key);
+    {
+        buffer_json_member_add_uint64(wb, "index", field_id);
+        buffer_json_member_add_boolean(wb, "unique_key", options & RRDF_FIELD_OPTS_UNIQUE_KEY);
+        buffer_json_member_add_string(wb, "name", name);
+        buffer_json_member_add_boolean(wb, "visible", options & RRDF_FIELD_OPTS_VISIBLE);
+        buffer_json_member_add_string(wb, "type", rrdf_field_type_to_string(type));
+        buffer_json_member_add_string_or_omit(wb, "units", units);
+        buffer_json_member_add_string(wb, "visualization", rrdf_field_visual_to_string(visual));
+
+        buffer_json_member_add_object(wb, "value_options");
+        {
+            buffer_json_member_add_string_or_omit(wb, "units", units);
+            buffer_json_member_add_string(wb, "transform", rrdf_field_transform_to_string(transform));
+            buffer_json_member_add_uint64(wb, "decimal_points", decimal_points);
+            buffer_json_member_add_string(wb, "default_value", default_value);
+        }
+        buffer_json_object_close(wb);
+
+        if (!isnan((NETDATA_DOUBLE) (max)))
+            buffer_json_member_add_double(wb, "max", (NETDATA_DOUBLE) (max));
+
+        buffer_json_member_add_string_or_omit(wb, "pointer_to", pointer_to);
+        buffer_json_member_add_string(wb, "sort", rrdf_field_sort_to_string(sort));
+        buffer_json_member_add_boolean(wb, "sortable", !(sort & RRDF_FIELD_SORT_FIXED));
+        buffer_json_member_add_boolean(wb, "sticky", options & RRDF_FIELD_OPTS_STICKY);
+        buffer_json_member_add_string(wb, "summary", rrdf_field_summary_to_string(summary));
+        buffer_json_member_add_string(wb, "filter", rrdf_field_filter_to_string(filter));
+    }
+    buffer_json_object_close(wb);
 }
 
 #endif /* NETDATA_WEB_BUFFER_H */

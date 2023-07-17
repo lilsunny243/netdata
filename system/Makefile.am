@@ -26,6 +26,7 @@ dist_config_SCRIPTS = \
 
 dist_config_DATA = \
     .install-type \
+    netdata-updater.conf \
     $(NULL)
 
 libconfigvnodesdir=$(libconfigdir)/vnodes
@@ -113,6 +114,7 @@ nodist_libsyssystemd_DATA = \
 
 dist_libsyssystemd_DATA = \
     systemd/netdata-updater.timer \
+    systemd/50-netdata.preset
     $(NULL)
 
 dist_noinst_DATA = \

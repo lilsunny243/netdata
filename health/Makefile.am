@@ -40,7 +40,7 @@ dist_healthconfig_DATA = \
     health.d/disks.conf \
     health.d/dnsmasq_dhcp.conf \
     health.d/dns_query.conf \
-    health.d/dockerd.conf \
+    health.d/docker.conf \
     health.d/elasticsearch.conf \
     health.d/entropy.conf \
     health.d/exporting.conf \
@@ -69,6 +69,7 @@ dist_healthconfig_DATA = \
     health.d/nvme.conf \
     health.d/nut.conf \
     health.d/pihole.conf \
+    health.d/plugin.conf \
     health.d/ping.conf \
     health.d/postgres.conf \
     health.d/portcheck.conf \

@@ -20,6 +20,11 @@ inline const char *rrdinstance_acquired_name(RRDINSTANCE_ACQUIRED *ria) {
     return string2str(ri->name);
 }
 
+inline bool rrdinstance_acquired_has_name(RRDINSTANCE_ACQUIRED *ria) {
+    RRDINSTANCE *ri = rrdinstance_acquired_value(ria);
+    return (ri->name && ri->name != ri->id);
+}
+
 inline const char *rrdinstance_acquired_units(RRDINSTANCE_ACQUIRED *ria) {
     RRDINSTANCE *ri = rrdinstance_acquired_value(ria);
     return string2str(ri->units);
@@ -132,7 +137,7 @@ static bool rrdinstance_conflict_callback(const DICTIONARY_ITEM *item __maybe_un
                    "RRDINSTANCE: '%s' cannot change id to '%s'",
                    string2str(ri->id), string2str(ri_new->id));
 
-    if(uuid_compare(ri->uuid, ri_new->uuid) != 0) {
+    if(uuid_memcmp(&ri->uuid, &ri_new->uuid) != 0) {
 #ifdef NETDATA_INTERNAL_CHECKS
         char uuid1[UUID_STR_LEN], uuid2[UUID_STR_LEN];
         uuid_unparse(ri->uuid, uuid1);
@@ -151,7 +156,7 @@ static bool rrdinstance_conflict_callback(const DICTIONARY_ITEM *item __maybe_un
     }
 
 #ifdef NETDATA_INTERNAL_CHECKS
-    if(ri->rrdset && uuid_compare(ri->uuid, ri->rrdset->chart_uuid) != 0) {
+    if(ri->rrdset && uuid_memcmp(&ri->uuid, &ri->rrdset->chart_uuid) != 0) {
         char uuid1[UUID_STR_LEN], uuid2[UUID_STR_LEN];
         uuid_unparse(ri->uuid, uuid1);
         uuid_unparse(ri->rrdset->chart_uuid, uuid2);
@@ -402,13 +407,13 @@ inline void rrdinstance_from_rrdset(RRDSET *st) {
 #define rrdset_get_rrdinstance(st) rrdset_get_rrdinstance_with_trace(st, __FUNCTION__);
 static inline RRDINSTANCE *rrdset_get_rrdinstance_with_trace(RRDSET *st, const char *function) {
     if(unlikely(!st->rrdinstance)) {
-        error("RRDINSTANCE: RRDSET '%s' is not linked to an RRDINSTANCE at %s()", rrdset_id(st), function);
+        netdata_log_error("RRDINSTANCE: RRDSET '%s' is not linked to an RRDINSTANCE at %s()", rrdset_id(st), function);
         return NULL;
     }
 
     RRDINSTANCE *ri = rrdinstance_acquired_value(st->rrdinstance);
     if(unlikely(!ri)) {
-        error("RRDINSTANCE: RRDSET '%s' lost its link to an RRDINSTANCE at %s()", rrdset_id(st), function);
+        netdata_log_error("RRDINSTANCE: RRDSET '%s' lost its link to an RRDINSTANCE at %s()", rrdset_id(st), function);
         return NULL;
     }
 

@@ -1,4 +1,4 @@
-# Role-Based Access model"
+# Role-Based Access model
 
 Netdata Cloud's role-based-access mechanism allows you to control what functionalities in the app users can access. Each user can be assigned only one role, which fully specifies all the capabilities they are afforded.
 
@@ -84,6 +84,13 @@ In more detail, you can find on the following tables which functionalities are a
 | Edit configuration | :heavy_check_mark: | - | - | - | - | - | Some exceptions apply depending on [service level](https://github.com/netdata/netdata/blob/master/docs/cloud/alerts-notifications/manage-notification-methods.md#available-actions-per-notification-methods-based-on-service-level) |
 | Delete configuration | :heavy_check_mark: | - | - | - | - | - | |
 | Edit personal level notification settings | :heavy_check_mark: | :heavy_check_mark: | :heavy_check_mark: | :heavy_check_mark: | :heavy_check_mark: | :heavy_check_mark: | [Manage user notification settings](https://github.com/netdata/netdata/blob/master/docs/cloud/alerts-notifications/manage-notification-methods.md#manage-user-notification-settings) |
+| See space alert notification silencing rules | :heavy_check_mark: | :heavy_check_mark: | :heavy_check_mark: | - | - | - | |
+| Add new space alert notification silencing rule | :heavy_check_mark: | :heavy_check_mark: | - | - | - | - | |
+| Enable/Disable space alert notification silencing rule | :heavy_check_mark: | :heavy_check_mark: | - | - | - | - |  |
+| Edit space alert notification silencing rule | :heavy_check_mark: | :heavy_check_mark: | - | - | - | - | |
+| Delete space alert notification silencing rule | :heavy_check_mark: | :heavy_check_mark: | - | - | - | - | |
+| See, add, edit or delete personal level alert notification silencing rule | :heavy_check_mark: | :heavy_check_mark: | :heavy_check_mark: | :heavy_check_mark: | - | - | |
+
 
 Notes:
 * Enable, Edit and Add actions over specific notification methods will only be allowed if your plan has access to those ([service classification](https://github.com/netdata/netdata/blob/master/docs/cloud/alerts-notifications/notifications.md#service-classification))
