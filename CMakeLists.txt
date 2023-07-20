@@ -86,7 +86,6 @@ pkg_check_modules(ZLIB REQUIRED zlib)
 set(NETDATA_COMMON_CFLAGS ${NETDATA_COMMON_CFLAGS} ${ZLIB_CFLAGS_OTHER})
 set(NETDATA_COMMON_LIBRARIES ${NETDATA_COMMON_LIBRARIES} ${ZLIB_LIBRARIES})
 set(NETDATA_COMMON_INCLUDE_DIRS ${NETDATA_COMMON_INCLUDE_DIRS} ${ZLIB_INCLUDE_DIRS})
-# set(NETDATA_REQUIRED_DEFINES "${NETDATA_REQUIRED_DEFINES} -DNETDATA_WITH_ZLIB=1")
 
 # -----------------------------------------------------------------------------
 # libuv multi-platform support library with a focus on asynchronous I/O
@@ -103,7 +102,7 @@ pkg_check_modules(LIBLZ4 REQUIRED liblz4)
 set(NETDATA_COMMON_CFLAGS ${NETDATA_COMMON_CFLAGS} ${LIBLZ4_CFLAGS_OTHER})
 set(NETDATA_COMMON_LIBRARIES ${NETDATA_COMMON_LIBRARIES} ${LIBLZ4_LIBRARIES})
 set(NETDATA_COMMON_INCLUDE_DIRS ${NETDATA_COMMON_INCLUDE_DIRS} ${LIBLZ4_INCLUDE_DIRS})
-# set(NETDATA_REQUIRED_DEFINES "${NETDATA_REQUIRED_DEFINES} -DENABLE_COMPRESSION=1")
+# set(NETDATA_REQUIRED_DEFINES "${NETDATA_REQUIRED_DEFINES} -DENABLE_LZ4=1")
 
 # -----------------------------------------------------------------------------
 # Judy General purpose dynamic array
@@ -387,34 +386,13 @@ set(LIBJUDY_SOURCES
         libnetdata/libjudy/src/JudyL/JudyLNextEmpty.c
         libnetdata/libjudy/src/JudyL/JudyLPrev.c
         libnetdata/libjudy/src/JudyL/JudyLPrevEmpty.c
-        JudyLTables.c
+        libnetdata/libjudy/src/JudyL/JudyLTables.c
         libnetdata/libjudy/src/JudyHS/JudyHS.c)
 
 ADD_LIBRARY(judy STATIC
              ${LIBJUDY_SOURCES})
 
-ADD_EXECUTABLE(judyltablesgen
-    libnetdata/libjudy/src/JudyL/JudyLTablesGen.c)
-
-target_include_directories(judyltablesgen PUBLIC
-    libnetdata/libjudy/src
-    libnetdata/libjudy/src/JudyCommon)
-
-target_compile_options(judyltablesgen PUBLIC
-    -Wno-format
-    -Wno-format-security)
-
 include_directories(BEFORE ${CMAKE_SOURCE_DIR}/libnetdata/libjudy/src)
-
-target_compile_definitions(judyltablesgen PUBLIC
-    JU_64BIT
-    JUDYL)
-
-add_custom_command(
-  OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/JudyLTables.c
-  COMMAND judyltablesgen
-  DEPENDS judyltablesgen
-  )
 
 target_include_directories(judy PUBLIC
     libnetdata/libjudy/src
@@ -468,6 +446,8 @@ set(LIBNETDATA_FILES
         libnetdata/dictionary/dictionary.h
         libnetdata/eval/eval.c
         libnetdata/eval/eval.h
+        libnetdata/gorilla/gorilla.cc
+        libnetdata/gorilla/gorilla.h
         libnetdata/health/health.c
         libnetdata/health/health.h
         libnetdata/july/july.c
@@ -511,8 +491,7 @@ set(LIBNETDATA_FILES
         libnetdata/string/utf8.h
         libnetdata/worker_utilization/worker_utilization.c
         libnetdata/worker_utilization/worker_utilization.h
-		libnetdata/parser/parser.h
-		libnetdata/parser/parser.c
+        libnetdata/http/http_defs.h
         )
 
 IF(ENABLE_PLUGIN_EBPF)
@@ -527,6 +506,14 @@ target_include_directories(libnetdata BEFORE PUBLIC ${GENERATED_CONFIG_H_DIR})
 
 set(APPS_PLUGIN_FILES
         collectors/apps.plugin/apps_plugin.c)
+
+set(DEBUGFS_PLUGIN_FILES
+        collectors/debugfs.plugin/debugfs_plugin.c
+        collectors/debugfs.plugin/debugfs_plugin.h
+        collectors/debugfs.plugin/debugfs_extfrag.c
+        collectors/debugfs.plugin/debugfs_zswap.c
+        collectors/debugfs.plugin/sys_devices_virtual_powercap.c
+        )
 
 set(FREEBSD_PLUGIN_FILES
         collectors/freebsd.plugin/plugin_freebsd.c
@@ -567,6 +554,10 @@ set(DISKSPACE_PLUGIN_FILES
 
 set(TIMEX_PLUGIN_FILES
         collectors/timex.plugin/plugin_timex.c
+        )
+
+set(PROFILE_PLUGIN_FILES
+        collectors/profile.plugin/plugin_profile.cc
         )
 
 set(FREEIPMI_PLUGIN_FILES
@@ -632,6 +623,10 @@ set(EBPF_PROCESS_PLUGIN_FILES
         collectors/ebpf.plugin/ebpf_apps.h
         collectors/ebpf.plugin/ebpf_cgroup.c
         collectors/ebpf.plugin/ebpf_cgroup.h
+        collectors/ebpf.plugin/ebpf_unittest.c
+        collectors/ebpf.plugin/ebpf_unittest.h
+        collectors/ebpf.plugin/ebpf_functions.c
+        collectors/ebpf.plugin/ebpf_functions.h
         )
 
 set(PROC_PLUGIN_FILES
@@ -708,8 +703,6 @@ set(REGISTRY_PLUGIN_FILES
         registry/registry_machine.h
         registry/registry_person.c
         registry/registry_person.h
-        registry/registry_url.c
-        registry/registry_url.h
         )
 
 set(STATSD_PLUGIN_FILES
@@ -863,6 +856,8 @@ set(API_PLUGIN_FILES
         web/api/formatters/rrdset2json.c
         web/api/formatters/rrdset2json.h
         web/api/health/health_cmdapi.c
+        web/rtc/webrtc.c
+        web/rtc/webrtc.h
         )
 
 set(STREAMING_PLUGIN_FILES
@@ -886,6 +881,8 @@ set(ACLK_ALWAYS_BUILD
         aclk/aclk_proxy.h
         aclk/aclk.c
         aclk/aclk.h
+        aclk/aclk_capas.c
+        aclk/aclk_capas.h
         )
 
 set(ACLK_FILES
@@ -909,8 +906,6 @@ set(ACLK_FILES
         aclk/aclk_alarm_api.h
         aclk/aclk_contexts_api.c
         aclk/aclk_contexts_api.h
-        aclk/aclk_capas.c
-        aclk/aclk_capas.h
         aclk/schema-wrappers/connection.cc
         aclk/schema-wrappers/connection.h
         aclk/schema-wrappers/node_connection.cc
@@ -934,6 +929,8 @@ set(ACLK_FILES
         aclk/schema-wrappers/schema_wrappers.h
         aclk/schema-wrappers/schema_wrapper_utils.cc
         aclk/schema-wrappers/schema_wrapper_utils.h
+        aclk/schema-wrappers/agent_cmds.cc
+        aclk/schema-wrappers/agent_cmds.h
         aclk/helpers/mqtt_wss_pal.h
         aclk/helpers/ringbuffer_pal.h
         )
@@ -1257,6 +1254,7 @@ set(ACLK_PROTO_DEFS
         aclk/aclk-schemas/proto/nodeinstance/info/v1/info.proto
         aclk/aclk-schemas/proto/context/v1/context.proto
         aclk/aclk-schemas/proto/context/v1/stream.proto
+        aclk/aclk-schemas/proto/agent/v1/cmds.proto
         )
 PROTOBUF_ACLK_GENERATE_CPP(ACLK_PROTO_BUILT_SRCS ACLK_PROTO_BUILT_HDRS ${ACLK_PROTO_DEFS})
 
@@ -1285,6 +1283,7 @@ ENDIF()
 
 list(APPEND NETDATA_FILES ${ACLK_ALWAYS_BUILD})
 list(APPEND NETDATA_FILES ${TIMEX_PLUGIN_FILES})
+list(APPEND NETDATA_FILES ${PROFILE_PLUGIN_FILES})
 
 # -----------------------------------------------------------------------------
 # netdata
@@ -1377,6 +1376,21 @@ target_link_libraries (netdatacli libnetdata ${NETDATA_COMMON_LIBRARIES})
 target_include_directories(netdatacli PUBLIC ${NETDATA_COMMON_INCLUDE_DIRS})
 target_include_directories(netdatacli BEFORE PUBLIC ${GENERATED_CONFIG_H_DIR})
 target_compile_options(netdatacli PUBLIC ${NETDATA_COMMON_CFLAGS})
+
+
+# -----------------------------------------------------------------------------
+# debugfs.plugin
+
+IF(ENABLE_PLUGIN_DEBUGFS)
+    message(STATUS "debugfs.plugin: enabled")
+    add_executable(debugfs.plugin ${GENERATED_CONFIG_H} ${DEBUGFS_PLUGIN_FILES})
+    target_link_libraries (debugfs.plugin libnetdata ${NETDATA_COMMON_LIBRARIES} ${CAP_LIBRARIES})
+    target_include_directories(debugfs.plugin PUBLIC ${NETDATA_COMMON_INCLUDE_DIRS} ${CAP_INCLUDE_DIRS})
+    target_include_directories(debugfs.plugin BEFORE PUBLIC ${GENERATED_CONFIG_H_DIR})
+    target_compile_options(debugfs.plugin PUBLIC ${NETDATA_COMMON_CFLAGS} ${CAP_CFLAGS_OTHER})
+ELSE()
+    message(STATUS "debugfs.plugin: disabled")
+ENDIF()
 
 
 # -----------------------------------------------------------------------------

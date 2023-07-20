@@ -218,7 +218,7 @@ typedef struct rrdinstance {
     STRING *title;
     STRING *units;
     STRING *family;
-    uint32_t priority;
+    uint32_t priority:24;
     RRDSET_TYPE chart_type;
 
     RRD_FLAGS flags;                    // flags related to this instance
@@ -250,6 +250,8 @@ typedef struct rrdcontext {
     uint32_t priority;
     RRDSET_TYPE chart_type;
 
+    SPINLOCK spinlock;
+
     RRD_FLAGS flags;
     time_t first_time_s;
     time_t last_time_s;
@@ -275,7 +277,9 @@ typedef struct rrdcontext {
         size_t dispatches;              // the number of times this has been dispatched to hub
     } queue;
 
-    netdata_mutex_t mutex;
+    struct {
+        uint32_t metrics;               // the number of metrics in this context
+    } stats;
 } RRDCONTEXT;
 
 
@@ -352,8 +356,8 @@ static inline void rrdcontext_release(RRDCONTEXT_ACQUIRED *rca) {
 void rrdcontext_recalculate_context_retention(RRDCONTEXT *rc, RRD_FLAGS reason, bool worker_jobs);
 void rrdcontext_recalculate_host_retention(RRDHOST *host, RRD_FLAGS reason, bool worker_jobs);
 
-#define rrdcontext_lock(rc) netdata_mutex_lock(&((rc)->mutex))
-#define rrdcontext_unlock(rc) netdata_mutex_unlock(&((rc)->mutex))
+#define rrdcontext_lock(rc) spinlock_lock(&((rc)->spinlock))
+#define rrdcontext_unlock(rc) spinlock_unlock(&((rc)->spinlock))
 
 void rrdinstance_trigger_updates(RRDINSTANCE *ri, const char *function);
 void rrdcontext_trigger_updates(RRDCONTEXT *rc, const char *function);
@@ -376,14 +380,5 @@ uint64_t rrdcontext_version_hash_with_callback(
         void *bundle);
 
 void rrdcontext_message_send_unsafe(RRDCONTEXT *rc, bool snapshot __maybe_unused, void *bundle __maybe_unused);
-
-// ----------------------------------------------------------------------------
-// scope
-
-typedef bool (*foreach_host_cb_t)(void *data, RRDHOST *host, bool queryable);
-uint64_t query_scope_foreach_host(SIMPLE_PATTERN *scope_hosts_sp, SIMPLE_PATTERN *hosts_sp, foreach_host_cb_t cb, void *data, uint64_t *hard_hash, uint64_t *soft_hash, char *host_uuid_buffer);
-
-typedef bool (*foreach_context_cb_t)(void *data, RRDCONTEXT_ACQUIRED *rca, bool queryable_context);
-size_t query_scope_foreach_context(RRDHOST *host, const char *scope_contexts, SIMPLE_PATTERN *scope_contexts_sp, SIMPLE_PATTERN *contexts_sp, foreach_context_cb_t cb, bool queryable_host, void *data);
 
 #endif //NETDATA_RRDCONTEXT_INTERNAL_H

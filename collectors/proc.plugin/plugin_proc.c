@@ -18,6 +18,7 @@ static struct proc_module {
     {.name = "/proc/stat",                   .dim = "stat",         .func = do_proc_stat},
     {.name = "/proc/uptime",                 .dim = "uptime",       .func = do_proc_uptime},
     {.name = "/proc/loadavg",                .dim = "loadavg",      .func = do_proc_loadavg},
+    {.name = "/proc/sys/fs/file-nr",         .dim = "file-nr",      .func = do_proc_sys_fs_file_nr},
     {.name = "/proc/sys/kernel/random/entropy_avail", .dim = "entropy", .func = do_proc_sys_kernel_random_entropy_avail},
 
     // pressure metrics
@@ -139,7 +140,7 @@ void *proc_main(void *ptr)
 
     if (config_get_boolean("plugin:proc", "/proc/net/dev", CONFIG_BOOLEAN_YES)) {
         netdev_thread = mallocz(sizeof(netdata_thread_t));
-        debug(D_SYSTEM, "Starting thread %s.", THREAD_NETDEV_NAME);
+        netdata_log_debug(D_SYSTEM, "Starting thread %s.", THREAD_NETDEV_NAME);
         netdata_thread_create(
             netdev_thread, THREAD_NETDEV_NAME, NETDATA_THREAD_OPTION_JOINABLE, netdev_main, netdev_thread);
     }
@@ -180,7 +181,7 @@ void *proc_main(void *ptr)
             if (unlikely(!pm->enabled))
                 continue;
 
-            debug(D_PROCNETDEV_LOOP, "PROC calling %s.", pm->name);
+            netdata_log_debug(D_PROCNETDEV_LOOP, "PROC calling %s.", pm->name);
 
             worker_is_busy(i);
             pm->enabled = !pm->func(localhost->rrd_update_every, hb_dt);

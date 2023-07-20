@@ -459,9 +459,9 @@ int do_dev_cpu_temperature(int update_every, usec_t dt) {
     static RRDDIM **rd_pcpu_temperature;
 
     if (unlikely(number_of_cpus != old_number_of_cpus)) {
-        rd_pcpu_temperature = reallocz(rd_pcpu_temperature, sizeof(RRDDIM) * number_of_cpus);
+        rd_pcpu_temperature = reallocz(rd_pcpu_temperature, sizeof(RRDDIM *) * number_of_cpus);
         if (unlikely(number_of_cpus > old_number_of_cpus))
-            memset(&rd_pcpu_temperature[old_number_of_cpus], 0, sizeof(RRDDIM) * (number_of_cpus - old_number_of_cpus));
+            memset(&rd_pcpu_temperature[old_number_of_cpus], 0, sizeof(RRDDIM *) * (number_of_cpus - old_number_of_cpus));
     }
 
     if (unlikely(!st)) {
@@ -1618,7 +1618,7 @@ int do_net_isr(int update_every, usec_t dt) {
                         all_softnet_charts[i].netisr_cpuid,
                         NULL,
                         "softnet_stat",
-                        NULL,
+                        "cpu.softnet_stat",
                         "Per CPU netisr statistics",
                         "events/s",
                         "freebsd.plugin",

@@ -6,7 +6,7 @@ void ml_update_dimensions_chart(ml_host_t *host, const ml_machine_learning_stats
     /*
      * Machine learning status
     */
-    {
+    if (Cfg.enable_statistics_charts) {
         if (!host->machine_learning_status_rs) {
             char id_buf[1024];
             char name_buf[1024];
@@ -48,7 +48,7 @@ void ml_update_dimensions_chart(ml_host_t *host, const ml_machine_learning_stats
     /*
      * Metric type
     */
-    {
+    if (Cfg.enable_statistics_charts) {
         if (!host->metric_type_rs) {
             char id_buf[1024];
             char name_buf[1024];
@@ -90,7 +90,7 @@ void ml_update_dimensions_chart(ml_host_t *host, const ml_machine_learning_stats
     /*
      * Training status
     */
-    {
+    if (Cfg.enable_statistics_charts) {
         if (!host->training_status_rs) {
             char id_buf[1024];
             char name_buf[1024];
@@ -124,6 +124,8 @@ void ml_update_dimensions_chart(ml_host_t *host, const ml_machine_learning_stats
                 rrddim_add(host->training_status_rs, "trained", NULL, 1, 1, RRD_ALGORITHM_ABSOLUTE);
             host->training_status_pending_with_model_rd =
                 rrddim_add(host->training_status_rs, "pending-with-model", NULL, 1, 1, RRD_ALGORITHM_ABSOLUTE);
+            host->training_status_silenced_rd =
+                rrddim_add(host->training_status_rs, "silenced", NULL, 1, 1, RRD_ALGORITHM_ABSOLUTE);
         }
 
         rrddim_set_by_pointer(host->training_status_rs,
@@ -134,6 +136,8 @@ void ml_update_dimensions_chart(ml_host_t *host, const ml_machine_learning_stats
                               host->training_status_trained_rd, mls.num_training_status_trained);
         rrddim_set_by_pointer(host->training_status_rs,
                               host->training_status_pending_with_model_rd, mls.num_training_status_pending_with_model);
+        rrddim_set_by_pointer(host->training_status_rs,
+                              host->training_status_silenced_rd, mls.num_training_status_silenced);
 
         rrdset_done(host->training_status_rs);
     }
@@ -180,6 +184,40 @@ void ml_update_dimensions_chart(ml_host_t *host, const ml_machine_learning_stats
         rrdset_done(host->dimensions_rs);
     }
 
+    // ML running
+    {
+        if (!host->ml_running_rs) {
+            char id_buf[1024];
+            char name_buf[1024];
+
+            snprintfz(id_buf, 1024, "ml_running_on_%s", localhost->machine_guid);
+            snprintfz(name_buf, 1024, "ml_running_on_%s", rrdhost_hostname(localhost));
+
+            host->ml_running_rs = rrdset_create(
+                    host->rh,
+                    "anomaly_detection", // type
+                    id_buf, // id
+                    name_buf, // name
+                    "anomaly_detection", // family
+                    "anomaly_detection.ml_running", // ctx
+                    "ML running", // title
+                    "boolean", // units
+                    NETDATA_ML_PLUGIN, // plugin
+                    NETDATA_ML_MODULE_DETECTION, // module
+                    NETDATA_ML_CHART_RUNNING, // priority
+                    localhost->rrd_update_every, // update_every
+                    RRDSET_TYPE_LINE // chart_type
+            );
+            rrdset_flag_set(host->ml_running_rs, RRDSET_FLAG_ANOMALY_DETECTION);
+
+            host->ml_running_rd =
+                rrddim_add(host->ml_running_rs, "ml_running", NULL, 1, 1, RRD_ALGORITHM_ABSOLUTE);
+        }
+
+        rrddim_set_by_pointer(host->ml_running_rs,
+                              host->ml_running_rd, host->ml_running);
+        rrdset_done(host->ml_running_rs);
+    }
 }
 
 void ml_update_host_and_detection_rate_charts(ml_host_t *host, collected_number AnomalyRate) {
@@ -257,64 +295,72 @@ void ml_update_host_and_detection_rate_charts(ml_host_t *host, collected_number 
         /*
          * Compute the values of the dimensions based on the host rate chart
         */
-        ONEWAYALLOC *OWA = onewayalloc_create(0);
-        time_t Now = now_realtime_sec();
-        time_t Before = Now - host->rh->rrd_update_every;
-        time_t After = Before - Cfg.anomaly_detection_query_duration;
-        RRDR_OPTIONS Options = static_cast<RRDR_OPTIONS>(0x00000000);
+        if (host->ml_running) {
+            ONEWAYALLOC *OWA = onewayalloc_create(0);
+            time_t Now = now_realtime_sec();
+            time_t Before = Now - host->rh->rrd_update_every;
+            time_t After = Before - Cfg.anomaly_detection_query_duration;
+            RRDR_OPTIONS Options = static_cast<RRDR_OPTIONS>(0x00000000);
 
-        RRDR *R = rrd2rrdr_legacy(
-                OWA,
-                host->anomaly_rate_rs,
-                1 /* points wanted */,
-                After,
-                Before,
-                Cfg.anomaly_detection_grouping_method,
-                0 /* resampling time */,
-                Options, "anomaly_rate",
-                NULL /* group options */,
-                0, /* timeout */
-                0, /* tier */
-                QUERY_SOURCE_ML,
-                STORAGE_PRIORITY_SYNCHRONOUS
-        );
+            RRDR *R = rrd2rrdr_legacy(
+                    OWA,
+                    host->anomaly_rate_rs,
+                    1 /* points wanted */,
+                    After,
+                    Before,
+                    Cfg.anomaly_detection_grouping_method,
+                    0 /* resampling time */,
+                    Options, "anomaly_rate",
+                    NULL /* group options */,
+                    0, /* timeout */
+                    0, /* tier */
+                    QUERY_SOURCE_ML,
+                    STORAGE_PRIORITY_SYNCHRONOUS
+            );
 
-        if (R) {
-            if (R->d == 1 && R->n == 1 && R->rows == 1) {
-                static thread_local bool prev_above_threshold = false;
-                bool above_threshold = R->v[0] >= Cfg.host_anomaly_rate_threshold;
-                bool new_anomaly_event = above_threshold && !prev_above_threshold;
-                prev_above_threshold = above_threshold;
+            if (R) {
+                if (R->d == 1 && R->n == 1 && R->rows == 1) {
+                    static thread_local bool prev_above_threshold = false;
+                    bool above_threshold = R->v[0] >= Cfg.host_anomaly_rate_threshold;
+                    bool new_anomaly_event = above_threshold && !prev_above_threshold;
+                    prev_above_threshold = above_threshold;
 
-                rrddim_set_by_pointer(host->detector_events_rs,
-                                      host->detector_events_above_threshold_rd, above_threshold);
-                rrddim_set_by_pointer(host->detector_events_rs,
-                                      host->detector_events_new_anomaly_event_rd, new_anomaly_event);
+                    rrddim_set_by_pointer(host->detector_events_rs,
+                                          host->detector_events_above_threshold_rd, above_threshold);
+                    rrddim_set_by_pointer(host->detector_events_rs,
+                                          host->detector_events_new_anomaly_event_rd, new_anomaly_event);
 
-                rrdset_done(host->detector_events_rs);
+                    rrdset_done(host->detector_events_rs);
+                }
+
+                rrdr_free(OWA, R);
             }
 
-            rrdr_free(OWA, R);
+            onewayalloc_destroy(OWA);
+        } else {
+            rrddim_set_by_pointer(host->detector_events_rs,
+                                  host->detector_events_above_threshold_rd, 0);
+            rrddim_set_by_pointer(host->detector_events_rs,
+                                  host->detector_events_new_anomaly_event_rd, 0);
+            rrdset_done(host->detector_events_rs);
         }
-
-        onewayalloc_destroy(OWA);
     }
 }
 
-void ml_update_training_statistics_chart(ml_host_t *host, const ml_training_stats_t &ts) {
+void ml_update_training_statistics_chart(ml_training_thread_t *training_thread, const ml_training_stats_t &ts) {
     /*
      * queue stats
     */
     {
-        if (!host->queue_stats_rs) {
+        if (!training_thread->queue_stats_rs) {
             char id_buf[1024];
             char name_buf[1024];
 
-            snprintfz(id_buf, 1024, "queue_stats_on_%s", localhost->machine_guid);
-            snprintfz(name_buf, 1024, "queue_stats_on_%s", rrdhost_hostname(localhost));
+            snprintfz(id_buf, 1024, "training_queue_%zu_stats", training_thread->id);
+            snprintfz(name_buf, 1024, "training_queue_%zu_stats", training_thread->id);
 
-            host->queue_stats_rs = rrdset_create(
-                    host->rh,
+            training_thread->queue_stats_rs = rrdset_create(
+                    localhost,
                     "netdata", // type
                     id_buf, // id
                     name_buf, // name
@@ -328,35 +374,35 @@ void ml_update_training_statistics_chart(ml_host_t *host, const ml_training_stat
                     localhost->rrd_update_every, // update_every
                     RRDSET_TYPE_LINE// chart_type
             );
-            rrdset_flag_set(host->queue_stats_rs, RRDSET_FLAG_ANOMALY_DETECTION);
+            rrdset_flag_set(training_thread->queue_stats_rs, RRDSET_FLAG_ANOMALY_DETECTION);
 
-            host->queue_stats_queue_size_rd =
-                rrddim_add(host->queue_stats_rs, "queue_size", NULL, 1, 1, RRD_ALGORITHM_ABSOLUTE);
-            host->queue_stats_popped_items_rd =
-                rrddim_add(host->queue_stats_rs, "popped_items", NULL, 1, 1, RRD_ALGORITHM_ABSOLUTE);
+            training_thread->queue_stats_queue_size_rd =
+                rrddim_add(training_thread->queue_stats_rs, "queue_size", NULL, 1, 1, RRD_ALGORITHM_ABSOLUTE);
+            training_thread->queue_stats_popped_items_rd =
+                rrddim_add(training_thread->queue_stats_rs, "popped_items", NULL, 1, 1, RRD_ALGORITHM_ABSOLUTE);
         }
 
-        rrddim_set_by_pointer(host->queue_stats_rs,
-                              host->queue_stats_queue_size_rd, ts.queue_size);
-        rrddim_set_by_pointer(host->queue_stats_rs,
-                              host->queue_stats_popped_items_rd, ts.num_popped_items);
+        rrddim_set_by_pointer(training_thread->queue_stats_rs,
+                              training_thread->queue_stats_queue_size_rd, ts.queue_size);
+        rrddim_set_by_pointer(training_thread->queue_stats_rs,
+                              training_thread->queue_stats_popped_items_rd, ts.num_popped_items);
 
-        rrdset_done(host->queue_stats_rs);
+        rrdset_done(training_thread->queue_stats_rs);
     }
 
     /*
      * training stats
     */
     {
-        if (!host->training_time_stats_rs) {
+        if (!training_thread->training_time_stats_rs) {
             char id_buf[1024];
             char name_buf[1024];
 
-            snprintfz(id_buf, 1024, "training_time_stats_on_%s", localhost->machine_guid);
-            snprintfz(name_buf, 1024, "training_time_stats_on_%s", rrdhost_hostname(localhost));
+            snprintfz(id_buf, 1024, "training_queue_%zu_time_stats", training_thread->id);
+            snprintfz(name_buf, 1024, "training_queue_%zu_time_stats", training_thread->id);
 
-            host->training_time_stats_rs = rrdset_create(
-                    host->rh,
+            training_thread->training_time_stats_rs = rrdset_create(
+                    localhost,
                     "netdata", // type
                     id_buf, // id
                     name_buf, // name
@@ -370,39 +416,39 @@ void ml_update_training_statistics_chart(ml_host_t *host, const ml_training_stat
                     localhost->rrd_update_every, // update_every
                     RRDSET_TYPE_LINE// chart_type
             );
-            rrdset_flag_set(host->training_time_stats_rs, RRDSET_FLAG_ANOMALY_DETECTION);
+            rrdset_flag_set(training_thread->training_time_stats_rs, RRDSET_FLAG_ANOMALY_DETECTION);
 
-            host->training_time_stats_allotted_rd =
-                rrddim_add(host->training_time_stats_rs, "allotted", NULL, 1, 1000, RRD_ALGORITHM_ABSOLUTE);
-            host->training_time_stats_consumed_rd =
-                rrddim_add(host->training_time_stats_rs, "consumed", NULL, 1, 1000, RRD_ALGORITHM_ABSOLUTE);
-            host->training_time_stats_remaining_rd =
-                rrddim_add(host->training_time_stats_rs, "remaining", NULL, 1, 1000, RRD_ALGORITHM_ABSOLUTE);
+            training_thread->training_time_stats_allotted_rd =
+                rrddim_add(training_thread->training_time_stats_rs, "allotted", NULL, 1, 1000, RRD_ALGORITHM_ABSOLUTE);
+            training_thread->training_time_stats_consumed_rd =
+                rrddim_add(training_thread->training_time_stats_rs, "consumed", NULL, 1, 1000, RRD_ALGORITHM_ABSOLUTE);
+            training_thread->training_time_stats_remaining_rd =
+                rrddim_add(training_thread->training_time_stats_rs, "remaining", NULL, 1, 1000, RRD_ALGORITHM_ABSOLUTE);
         }
 
-        rrddim_set_by_pointer(host->training_time_stats_rs,
-                              host->training_time_stats_allotted_rd, ts.allotted_ut);
-        rrddim_set_by_pointer(host->training_time_stats_rs,
-                              host->training_time_stats_consumed_rd, ts.consumed_ut);
-        rrddim_set_by_pointer(host->training_time_stats_rs,
-                              host->training_time_stats_remaining_rd, ts.remaining_ut);
+        rrddim_set_by_pointer(training_thread->training_time_stats_rs,
+                              training_thread->training_time_stats_allotted_rd, ts.allotted_ut);
+        rrddim_set_by_pointer(training_thread->training_time_stats_rs,
+                              training_thread->training_time_stats_consumed_rd, ts.consumed_ut);
+        rrddim_set_by_pointer(training_thread->training_time_stats_rs,
+                              training_thread->training_time_stats_remaining_rd, ts.remaining_ut);
 
-        rrdset_done(host->training_time_stats_rs);
+        rrdset_done(training_thread->training_time_stats_rs);
     }
 
     /*
      * training result stats
     */
     {
-        if (!host->training_results_rs) {
+        if (!training_thread->training_results_rs) {
             char id_buf[1024];
             char name_buf[1024];
 
-            snprintfz(id_buf, 1024, "training_results_on_%s", localhost->machine_guid);
-            snprintfz(name_buf, 1024, "training_results_on_%s", rrdhost_hostname(localhost));
+            snprintfz(id_buf, 1024, "training_queue_%zu_results", training_thread->id);
+            snprintfz(name_buf, 1024, "training_queue_%zu_results", training_thread->id);
 
-            host->training_results_rs = rrdset_create(
-                    host->rh,
+            training_thread->training_results_rs = rrdset_create(
+                    localhost,
                     "netdata", // type
                     id_buf, // id
                     name_buf, // name
@@ -416,31 +462,61 @@ void ml_update_training_statistics_chart(ml_host_t *host, const ml_training_stat
                     localhost->rrd_update_every, // update_every
                     RRDSET_TYPE_LINE// chart_type
             );
-            rrdset_flag_set(host->training_results_rs, RRDSET_FLAG_ANOMALY_DETECTION);
+            rrdset_flag_set(training_thread->training_results_rs, RRDSET_FLAG_ANOMALY_DETECTION);
 
-            host->training_results_ok_rd =
-                rrddim_add(host->training_results_rs, "ok", NULL, 1, 1, RRD_ALGORITHM_ABSOLUTE);
-            host->training_results_invalid_query_time_range_rd =
-                rrddim_add(host->training_results_rs, "invalid-queries", NULL, 1, 1, RRD_ALGORITHM_ABSOLUTE);
-            host->training_results_not_enough_collected_values_rd =
-                rrddim_add(host->training_results_rs, "not-enough-values", NULL, 1, 1, RRD_ALGORITHM_ABSOLUTE);
-            host->training_results_null_acquired_dimension_rd =
-                rrddim_add(host->training_results_rs, "null-acquired-dimensions", NULL, 1, 1, RRD_ALGORITHM_ABSOLUTE);
-            host->training_results_chart_under_replication_rd =
-                rrddim_add(host->training_results_rs, "chart-under-replication", NULL, 1, 1, RRD_ALGORITHM_ABSOLUTE);
+            training_thread->training_results_ok_rd =
+                rrddim_add(training_thread->training_results_rs, "ok", NULL, 1, 1, RRD_ALGORITHM_ABSOLUTE);
+            training_thread->training_results_invalid_query_time_range_rd =
+                rrddim_add(training_thread->training_results_rs, "invalid-queries", NULL, 1, 1, RRD_ALGORITHM_ABSOLUTE);
+            training_thread->training_results_not_enough_collected_values_rd =
+                rrddim_add(training_thread->training_results_rs, "not-enough-values", NULL, 1, 1, RRD_ALGORITHM_ABSOLUTE);
+            training_thread->training_results_null_acquired_dimension_rd =
+                rrddim_add(training_thread->training_results_rs, "null-acquired-dimensions", NULL, 1, 1, RRD_ALGORITHM_ABSOLUTE);
+            training_thread->training_results_chart_under_replication_rd =
+                rrddim_add(training_thread->training_results_rs, "chart-under-replication", NULL, 1, 1, RRD_ALGORITHM_ABSOLUTE);
         }
 
-        rrddim_set_by_pointer(host->training_results_rs,
-                              host->training_results_ok_rd, ts.training_result_ok);
-        rrddim_set_by_pointer(host->training_results_rs,
-                              host->training_results_invalid_query_time_range_rd, ts.training_result_invalid_query_time_range);
-        rrddim_set_by_pointer(host->training_results_rs,
-                              host->training_results_not_enough_collected_values_rd, ts.training_result_not_enough_collected_values);
-        rrddim_set_by_pointer(host->training_results_rs,
-                              host->training_results_null_acquired_dimension_rd, ts.training_result_null_acquired_dimension);
-        rrddim_set_by_pointer(host->training_results_rs,
-                              host->training_results_chart_under_replication_rd, ts.training_result_chart_under_replication);
+        rrddim_set_by_pointer(training_thread->training_results_rs,
+                              training_thread->training_results_ok_rd, ts.training_result_ok);
+        rrddim_set_by_pointer(training_thread->training_results_rs,
+                              training_thread->training_results_invalid_query_time_range_rd, ts.training_result_invalid_query_time_range);
+        rrddim_set_by_pointer(training_thread->training_results_rs,
+                              training_thread->training_results_not_enough_collected_values_rd, ts.training_result_not_enough_collected_values);
+        rrddim_set_by_pointer(training_thread->training_results_rs,
+                              training_thread->training_results_null_acquired_dimension_rd, ts.training_result_null_acquired_dimension);
+        rrddim_set_by_pointer(training_thread->training_results_rs,
+                              training_thread->training_results_chart_under_replication_rd, ts.training_result_chart_under_replication);
 
-        rrdset_done(host->training_results_rs);
+        rrdset_done(training_thread->training_results_rs);
+    }
+}
+
+void ml_update_global_statistics_charts(uint64_t models_consulted) {
+    if (Cfg.enable_statistics_charts) {
+        static RRDSET *st = NULL;
+        static RRDDIM *rd = NULL;
+
+        if (unlikely(!st)) {
+            st = rrdset_create_localhost(
+                    "netdata" // type
+                    , "ml_models_consulted" // id
+                    , NULL // name
+                    , NETDATA_ML_CHART_FAMILY // family
+                    , NULL // context
+                    , "KMeans models used for prediction" // title
+                    , "models" // units
+                    , NETDATA_ML_PLUGIN // plugin
+                    , NETDATA_ML_MODULE_DETECTION // module
+                    , NETDATA_ML_CHART_PRIO_MACHINE_LEARNING_STATUS // priority
+                    , localhost->rrd_update_every // update_every
+                    , RRDSET_TYPE_AREA // chart_type
+            );
+
+            rd = rrddim_add(st, "num_models_consulted", NULL, 1, 1, RRD_ALGORITHM_INCREMENTAL);
+        }
+
+        rrddim_set_by_pointer(st, rd, (collected_number) models_consulted);
+
+        rrdset_done(st);
     }
 }
