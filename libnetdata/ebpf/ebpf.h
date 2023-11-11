@@ -148,6 +148,7 @@ typedef struct ebpf_addresses {
     uint32_t hash;
     // We use long as address, because it matches system length
     unsigned long addr;
+    uint32_t type;
 } ebpf_addresses_t;
 
 extern char *ebpf_user_config_dir;
@@ -180,6 +181,17 @@ enum netdata_ebpf_map_type {
 enum netdata_controller {
     NETDATA_CONTROLLER_APPS_ENABLED,
     NETDATA_CONTROLLER_APPS_LEVEL,
+
+    // These index show the number of elements
+    // stored inside hash tables.
+    //
+    // We have indexes to count increase and
+    // decrease events, because __sync_fetch_and_sub
+    // generates compilation errors.
+    NETDATA_CONTROLLER_PID_TABLE_ADD,
+    NETDATA_CONTROLLER_PID_TABLE_DEL,
+    NETDATA_CONTROLLER_TEMP_TABLE_ADD,
+    NETDATA_CONTROLLER_TEMP_TABLE_DEL,
 
     NETDATA_CONTROLLER_END
 };
@@ -278,12 +290,39 @@ enum ebpf_threads_status {
     NETDATA_THREAD_EBPF_NOT_RUNNING         // thread was never started
 };
 
+enum ebpf_global_table_values {
+    NETDATA_EBPF_GLOBAL_TABLE_PID_TABLE_ADD, // Count elements added inside PID table
+    NETDATA_EBPF_GLOBAL_TABLE_PID_TABLE_DEL, // Count elements removed from PID table
+    NETDATA_EBPF_GLOBAL_TABLE_TEMP_TABLE_ADD, // Count elements added inside TEMP table
+    NETDATA_EBPF_GLOBAL_TABLE_TEMP_TABLE_DEL,  // Count elements removed from TEMP table
+
+    NETDATA_EBPF_GLOBAL_TABLE_STATUS_END
+};
+
+typedef uint64_t netdata_idx_t;
+
 typedef struct ebpf_module {
-    const char *thread_name;
-    const char *config_name;
-    const char *thread_description;
+    // Constants used with module
+    struct {
+        const char *thread_name;
+        const char *config_name;
+        const char *thread_description;
+    } info;
+
+    // Helpers used with plugin
+    struct {
+        void *(*start_routine)(void *);                             // the thread function
+        void (*apps_routine)(struct ebpf_module *em, void *ptr);    // the apps charts
+        void (*fnct_routine)(BUFFER *bf, struct ebpf_module *em);   // the function used for exteernal requests
+        const char *fcnt_name;                                      // name given to cloud
+        const char *fcnt_desc;                                      // description given about function
+        const char *fcnt_thread_chart_name;
+        int order_thread_chart;
+        const char *fcnt_thread_lifetime_name;
+        int order_thread_lifetime;
+    } functions;
+
     enum ebpf_threads_status enabled;
-    void *(*start_routine)(void *);
     int update_every;
     int global_charts;
     netdata_apps_integration_flags_t apps_charts;
@@ -292,7 +331,6 @@ typedef struct ebpf_module {
     netdata_run_mode_t mode;
     uint32_t thread_id;
     int optional;
-    void (*apps_routine)(struct ebpf_module *em, void *ptr);
     ebpf_local_maps_t *maps;
     ebpf_specify_name_t *names;
     uint32_t pid_map_size;
@@ -313,11 +351,13 @@ typedef struct ebpf_module {
     // period to run
     uint32_t running_time; // internal usage, this is used to reset a value when a new request happens.
     uint32_t lifetime;
+
+    netdata_idx_t hash_table_stats[NETDATA_EBPF_GLOBAL_TABLE_STATUS_END];
 } ebpf_module_t;
 
 #define EBPF_DEFAULT_LIFETIME 300
-// This will be present until all functions are merged
-#define EBPF_NON_FUNCTION_LIFE_TIME 86400
+// This will be present until all functions are merged. The deadline is planned for 68 years since plugin start
+#define EBPF_NON_FUNCTION_LIFE_TIME UINT_MAX
 
 int ebpf_get_kernel_version();
 int get_redhat_release();

@@ -187,7 +187,7 @@ services:
     security_opt:
       - apparmor:unconfined
     volumes:
-      - ./netdataconfig/netdata:/etc/netdata:ro
+      - ./netdataconfig/netdata:/etc/netdata
       - netdatalib:/var/lib/netdata
       - netdatacache:/var/cache/netdata
       - /etc/passwd:/host/etc/passwd:ro
@@ -332,6 +332,8 @@ volumes:
 **Note:** Replace `2375` with the port of your proxy.
 
 #### CetusGuard
+
+> Note: This deployment method is supported by the community
 
 ```yaml
 version: '3'

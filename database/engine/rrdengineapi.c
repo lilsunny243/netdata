@@ -131,12 +131,12 @@ static METRIC *rrdeng_metric_create(STORAGE_INSTANCE *db_instance, uuid_t *uuid)
 
     struct rrdengine_instance *ctx = (struct rrdengine_instance *)db_instance;
     MRG_ENTRY entry = {
+            .uuid = uuid,
             .section = (Word_t)ctx,
             .first_time_s = 0,
             .last_time_s = 0,
             .latest_update_every_s = 0,
     };
-    uuid_copy(entry.uuid, *uuid);
 
     METRIC *metric = mrg_metric_add_and_acquire(main_mrg, entry, NULL);
     return metric;
@@ -201,7 +201,7 @@ static inline bool check_completed_page_consistency(struct rrdeng_collect_handle
     if (unlikely(!handle->page || !handle->page_entries_max || !handle->page_position || !handle->page_end_time_ut))
         return false;
 
-    struct rrdengine_instance *ctx = mrg_metric_ctx(handle->metric);
+    struct rrdengine_instance *ctx = handle->ctx;
 
     uuid_t *uuid = mrg_metric_uuid(main_mrg, handle->metric);
     time_t start_time_s = pgc_page_start_time_s(handle->page);
@@ -257,6 +257,7 @@ STORAGE_COLLECT_HANDLE *rrdeng_store_metric_init(STORAGE_METRIC_HANDLE *db_metri
     handle = callocz(1, sizeof(struct rrdeng_collect_handle));
     handle->common.backend = STORAGE_ENGINE_BACKEND_DBENGINE;
     handle->metric = metric;
+    handle->ctx = ctx;
     handle->page = NULL;
     handle->data = NULL;
     handle->data_size = 0;
@@ -312,7 +313,7 @@ static bool page_has_only_empty_metrics(struct rrdeng_collect_handle *handle) {
         default: {
             static bool logged = false;
             if(!logged) {
-                netdata_log_error("DBENGINE: cannot check page for nulls on unknown page type id %d", (mrg_metric_ctx(handle->metric))->config.page_type);
+                netdata_log_error("DBENGINE: cannot check page for nulls on unknown page type id %d", handle->ctx->config.page_type);
                 logged = true;
             }
             return false;
@@ -442,7 +443,7 @@ static size_t aligned_allocation_entries(size_t max_slots, size_t target_slot, t
 }
 
 static void *rrdeng_alloc_new_metric_data(struct rrdeng_collect_handle *handle, size_t *data_size, usec_t point_in_time_ut) {
-    struct rrdengine_instance *ctx = mrg_metric_ctx(handle->metric);
+    struct rrdengine_instance *ctx = handle->ctx;
 
     size_t max_size = tier_page_size[ctx->config.tier];
     size_t max_slots = max_size / CTX_POINT_SIZE_BYTES(ctx);
@@ -484,7 +485,7 @@ static void rrdeng_store_metric_append_point(STORAGE_COLLECT_HANDLE *collection_
                                              const SN_FLAGS flags)
 {
     struct rrdeng_collect_handle *handle = (struct rrdeng_collect_handle *)collection_handle;
-    struct rrdengine_instance *ctx = mrg_metric_ctx(handle->metric);
+    struct rrdengine_instance *ctx = handle->ctx;
 
     if(unlikely(!handle->data))
         handle->data = rrdeng_alloc_new_metric_data(handle, &handle->data_size, point_in_time_ut);
@@ -534,7 +535,8 @@ static void rrdeng_store_metric_append_point(STORAGE_COLLECT_HANDLE *collection_
     timing_step(TIMING_STEP_DBENGINE_MRG_UPDATE);
 }
 
-static void store_metric_next_error_log(struct rrdeng_collect_handle *handle, usec_t point_in_time_ut, const char *msg) {
+static void store_metric_next_error_log(struct rrdeng_collect_handle *handle __maybe_unused, usec_t point_in_time_ut __maybe_unused, const char *msg __maybe_unused) {
+#ifdef NETDATA_INTERNAL_CHECKS
     time_t point_in_time_s = (time_t)(point_in_time_ut / USEC_PER_SEC);
     char uuid[UUID_STR_LEN + 1];
     uuid_unparse(*mrg_metric_uuid(main_mrg, handle->metric), uuid);
@@ -562,6 +564,9 @@ static void store_metric_next_error_log(struct rrdeng_collect_handle *handle, us
     );
 
     buffer_free(wb);
+#else
+    ;
+#endif
 }
 
 void rrdeng_store_metric_next(STORAGE_COLLECT_HANDLE *collection_handle,
@@ -652,7 +657,7 @@ void rrdeng_store_metric_next(STORAGE_COLLECT_HANDLE *collection_handle,
  */
 int rrdeng_store_metric_finalize(STORAGE_COLLECT_HANDLE *collection_handle) {
     struct rrdeng_collect_handle *handle = (struct rrdeng_collect_handle *)collection_handle;
-    struct rrdengine_instance *ctx = mrg_metric_ctx(handle->metric);
+    struct rrdengine_instance *ctx = handle->ctx;
 
     handle->page_flags |= RRDENG_PAGE_COLLECT_FINALIZE;
     rrdeng_store_metric_flush_current_page(collection_handle);
@@ -808,12 +813,14 @@ static bool rrdeng_load_page_next(struct storage_engine_query_handle *rrddim_han
     if (unlikely(handle->now_s > rrddim_handle->end_time_s))
         return false;
 
-    size_t entries;
+    size_t entries = 0;
     handle->page = pg_cache_lookup_next(ctx, handle->pdc, handle->now_s, handle->dt_s, &entries);
-    if (unlikely(!handle->page))
-        return false;
 
-    internal_fatal(pgc_page_data(handle->page) == DBENGINE_EMPTY_PAGE, "Empty page returned");
+    internal_fatal(handle->page && (pgc_page_data(handle->page) == DBENGINE_EMPTY_PAGE || !entries),
+                   "A page was returned, but it is empty - pg_cache_lookup_next() should be handling this case");
+
+    if (unlikely(!handle->page || pgc_page_data(handle->page) == DBENGINE_EMPTY_PAGE || !entries))
+        return false;
 
     time_t page_start_time_s = pgc_page_start_time_s(handle->page);
     time_t page_end_time_s = pgc_page_end_time_s(handle->page);
@@ -1002,19 +1009,24 @@ bool rrdeng_metric_retention_by_uuid(STORAGE_INSTANCE *db_instance, uuid_t *dim_
     return true;
 }
 
-size_t rrdeng_disk_space_max(STORAGE_INSTANCE *db_instance) {
+uint64_t rrdeng_disk_space_max(STORAGE_INSTANCE *db_instance) {
     struct rrdengine_instance *ctx = (struct rrdengine_instance *)db_instance;
     return ctx->config.max_disk_space;
 }
 
-size_t rrdeng_disk_space_used(STORAGE_INSTANCE *db_instance) {
+uint64_t rrdeng_disk_space_used(STORAGE_INSTANCE *db_instance) {
     struct rrdengine_instance *ctx = (struct rrdengine_instance *)db_instance;
     return __atomic_load_n(&ctx->atomic.current_disk_space, __ATOMIC_RELAXED);
 }
 
 time_t rrdeng_global_first_time_s(STORAGE_INSTANCE *db_instance) {
     struct rrdengine_instance *ctx = (struct rrdengine_instance *)db_instance;
-    return __atomic_load_n(&ctx->atomic.first_time_s, __ATOMIC_RELAXED);
+
+    time_t t = __atomic_load_n(&ctx->atomic.first_time_s, __ATOMIC_RELAXED);
+    if(t == LONG_MAX || t < 0)
+        t = 0;
+
+    return t;
 }
 
 size_t rrdeng_currently_collected_metrics(STORAGE_INSTANCE *db_instance) {
@@ -1229,12 +1241,14 @@ int rrdeng_exit(struct rrdengine_instance *ctx) {
     // 4. then wait for completion
 
     bool logged = false;
-    while(__atomic_load_n(&ctx->atomic.collectors_running, __ATOMIC_RELAXED) && !unittest_running) {
+    size_t count = 10;
+    while(__atomic_load_n(&ctx->atomic.collectors_running, __ATOMIC_RELAXED) && count && !unittest_running) {
         if(!logged) {
             netdata_log_info("DBENGINE: waiting for collectors to finish on tier %d...", (ctx->config.legacy) ? -1 : ctx->config.tier);
             logged = true;
         }
         sleep_usec(100 * USEC_PER_MS);
+        count--;
     }
 
     netdata_log_info("DBENGINE: flushing main cache for tier %d", (ctx->config.legacy) ? -1 : ctx->config.tier);

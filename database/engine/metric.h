@@ -9,7 +9,7 @@ typedef struct metric METRIC;
 typedef struct mrg MRG;
 
 typedef struct mrg_entry {
-    uuid_t uuid;
+    uuid_t *uuid;
     Word_t section;
     time_t first_time_s;
     time_t last_time_s;
@@ -34,9 +34,6 @@ struct mrg_statistics {
     // --- atomic --- multiple readers / writers
 
     size_t entries_referenced;
-
-    MRG_CACHE_LINE_PADDING(1);
-    size_t entries_with_retention;
 
     MRG_CACHE_LINE_PADDING(2);
     size_t current_references;

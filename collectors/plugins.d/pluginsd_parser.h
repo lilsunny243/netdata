@@ -10,6 +10,11 @@
 // this has to be in-sync with the same at receiver.c
 #define WORKER_RECEIVER_JOB_REPLICATION_COMPLETION (WORKER_PARSER_FIRST_JOB - 3)
 
+// this controls the max response size of a function
+#define PLUGINSD_MAX_DEFERRED_SIZE (20 * 1024 * 1024)
+
+#define PLUGINSD_MIN_RRDSET_POINTERS_CACHE 1024
+
 // PARSER return codes
 typedef enum __attribute__ ((__packed__)) parser_rc {
     PARSER_RC_OK,       // Callback was successful, go on
@@ -25,6 +30,7 @@ typedef enum __attribute__ ((__packed__)) parser_input_type {
 typedef enum __attribute__ ((__packed__)) {
     PARSER_INIT_PLUGINSD        = (1 << 1),
     PARSER_INIT_STREAMING       = (1 << 2),
+    PARSER_REP_METADATA         = (1 << 3),
 } PARSER_REPERTOIRE;
 
 struct parser;
@@ -38,15 +44,21 @@ typedef struct parser_keyword {
 } PARSER_KEYWORD;
 
 typedef struct parser_user_object {
+    bool cleanup_slots;
     RRDSET *st;
     RRDHOST *host;
     void    *opaque;
     struct plugind *cd;
     int trust_durations;
-    DICTIONARY *new_host_labels;
-    DICTIONARY *chart_rrdlabels_linked_temporarily;
+    RRDLABELS *new_host_labels;
+    RRDLABELS *chart_rrdlabels_linked_temporarily;
     size_t data_collections_count;
     int enabled;
+
+#ifdef NETDATA_LOG_STREAM_RECEIVE
+    FILE *stream_log_fp;
+    PARSER_REPERTOIRE stream_log_repertoire;
+#endif
 
     STREAM_CAPABILITIES capabilities; // receiver capabilities
 
@@ -55,7 +67,7 @@ typedef struct parser_user_object {
         uuid_t machine_guid;
         char machine_guid_str[UUID_STR_LEN];
         STRING *hostname;
-        DICTIONARY *rrdlabels;
+        RRDLABELS *rrdlabels;
     } host_define;
 
     struct parser_user_object_replay {
@@ -91,6 +103,9 @@ typedef struct parser {
 
 #ifdef ENABLE_HTTPS
     NETDATA_SSL *ssl_output;
+#endif
+#ifdef ENABLE_H2O
+    void *h2o_ctx;                  // if set we use h2o_stream functions to send data
 #endif
 
     PARSER_USER_OBJECT user;        // User defined structure to hold extra state between calls
@@ -148,18 +163,23 @@ static inline PARSER_KEYWORD *parser_find_keyword(PARSER *parser, const char *co
 }
 
 static inline int parser_action(PARSER *parser, char *input) {
+#ifdef NETDATA_LOG_STREAM_RECEIVE
+    static __thread char line[PLUGINSD_LINE_MAX + 1];
+    strncpyz(line, input, sizeof(line) - 1);
+#endif
+
     parser->line++;
 
     if(unlikely(parser->flags & PARSER_DEFER_UNTIL_KEYWORD)) {
-        char command[PLUGINSD_LINE_MAX + 1];
-        bool has_keyword = find_first_keyword(input, command, PLUGINSD_LINE_MAX, isspace_map_pluginsd);
+        char command[100 + 1];
+        bool has_keyword = find_first_keyword(input, command, 100, isspace_map_pluginsd);
 
         if(!has_keyword || strcmp(command, parser->defer.end_keyword) != 0) {
             if(parser->defer.response) {
                 buffer_strcat(parser->defer.response, input);
-                if(buffer_strlen(parser->defer.response) > 10 * 1024 * 1024) {
-                    // more than 10MB of data
-                    // a bad plugin that did not send the end_keyword
+                if(buffer_strlen(parser->defer.response) > PLUGINSD_MAX_DEFERRED_SIZE) {
+                    // more than PLUGINSD_MAX_DEFERRED_SIZE of data,
+                    // or a bad plugin that did not send the end_keyword
                     internal_error(true, "PLUGINSD: deferred response is too big (%zu bytes). Stopping this plugin.", buffer_strlen(parser->defer.response));
                     return 1;
                 }
@@ -180,7 +200,7 @@ static inline int parser_action(PARSER *parser, char *input) {
         return 0;
     }
 
-    char *words[PLUGINSD_MAX_WORDS];
+    static __thread char *words[PLUGINSD_MAX_WORDS];
     size_t num_words = quoted_strings_splitter_pluginsd(input, words, PLUGINSD_MAX_WORDS);
     const char *command = get_word(words, num_words, 0);
 
@@ -191,6 +211,12 @@ static inline int parser_action(PARSER *parser, char *input) {
     PARSER_KEYWORD *t = parser_find_keyword(parser, command);
     if(likely(t)) {
         worker_is_busy(t->worker_job_id);
+
+#ifdef NETDATA_LOG_STREAM_RECEIVE
+        if(parser->user.stream_log_fp && t->repertoire & parser->user.stream_log_repertoire)
+            fprintf(parser->user.stream_log_fp, "%s", line);
+#endif
+
         rc = parser_execute(parser, t, words, num_words);
         // rc = (*t->func)(words, num_words, parser);
         worker_is_idle();
