@@ -15,18 +15,9 @@ void buffer_reset(BUFFER *wb) {
     wb->options = 0;
     wb->date = 0;
     wb->expires = 0;
+    buffer_no_cacheable(wb);
 
     buffer_overflow_check(wb);
-}
-
-const char *buffer_tostring(BUFFER *wb)
-{
-    buffer_need_bytes(wb, 1);
-    wb->buffer[wb->len] = '\0';
-
-    buffer_overflow_check(wb);
-
-    return(wb->buffer);
 }
 
 void buffer_char_replace(BUFFER *wb, char from, char to) {
@@ -254,6 +245,7 @@ BUFFER *buffer_create(size_t size, size_t *statistics)
     b->size = size;
     b->content_type = CT_TEXT_PLAIN;
     b->statistics = statistics;
+    buffer_no_cacheable(b);
     buffer_overflow_init(b);
     buffer_overflow_check(b);
 
@@ -305,11 +297,11 @@ void buffer_increase(BUFFER *b, size_t free_size_required) {
 // ----------------------------------------------------------------------------
 
 void buffer_json_initialize(BUFFER *wb, const char *key_quote, const char *value_quote, int depth,
-                       bool add_anonymous_object, bool minify) {
+                       bool add_anonymous_object, BUFFER_JSON_OPTIONS options) {
     strncpyz(wb->json.key_quote, key_quote, BUFFER_QUOTE_MAX_SIZE);
     strncpyz(wb->json.value_quote,  value_quote, BUFFER_QUOTE_MAX_SIZE);
 
-    wb->json.minify = minify;
+    wb->json.options = options;
     wb->json.depth = (int8_t)(depth - 1);
     _buffer_json_depth_push(wb, BUFFER_JSON_OBJECT);
 
@@ -317,6 +309,7 @@ void buffer_json_initialize(BUFFER *wb, const char *key_quote, const char *value
         buffer_fast_strcat(wb, "{", 1);
 
     wb->content_type = CT_APPLICATION_JSON;
+    buffer_no_cacheable(wb);
 }
 
 void buffer_json_finalize(BUFFER *wb) {
@@ -336,7 +329,7 @@ void buffer_json_finalize(BUFFER *wb) {
         }
     }
 
-    if(!wb->json.minify)
+    if(!(wb->json.options & BUFFER_JSON_OPTIONS_MINIFY))
         buffer_fast_strcat(wb, "\n", 1);
 }
 
@@ -487,13 +480,13 @@ int buffer_unittest(void) {
 
     buffer_flush(wb);
 
-    buffer_json_initialize(wb, "\"", "\"", 0, true, false);
+    buffer_json_initialize(wb, "\"", "\"", 0, true, BUFFER_JSON_OPTIONS_DEFAULT);
     buffer_json_finalize(wb);
     errors += buffer_expect(wb, "{\n}\n");
 
     buffer_flush(wb);
 
-    buffer_json_initialize(wb, "\"", "\"", 0, true, false);
+    buffer_json_initialize(wb, "\"", "\"", 0, true, BUFFER_JSON_OPTIONS_DEFAULT);
     buffer_json_member_add_string(wb, "hello", "world");
     buffer_json_member_add_string(wb, "alpha", "this: \" is a double quote");
     buffer_json_member_add_object(wb, "object1");

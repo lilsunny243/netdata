@@ -70,6 +70,12 @@ AC_ARG_ENABLE(
     [enable_plugin_freeipmi="detect"]
 )
 AC_ARG_ENABLE(
+    [plugin-systemd-journal],
+    [AS_HELP_STRING([--enable-plugin-systemd-journal], [enable systemd-journal plugin @<:@default autodetect@:>@])],
+    ,
+    [enable_plugin_systemd_journal="detect"]
+)
+AC_ARG_ENABLE(
     [plugin-cups],
     [AS_HELP_STRING([--enable-plugin-cups], [enable cups plugin @<:@default autodetect@:>@])],
     ,
@@ -549,15 +555,48 @@ OPTIONAL_UV_LIBS="${UV_LIBS}"
 
 AC_CHECK_LIB(
     [lz4],
-    [LZ4_initStream],
+    [LZ4_createStream],
     [LZ4_LIBS_FAST="-llz4"]
 )
 
 AC_CHECK_LIB(
     [lz4],
-    [LZ4_compress_default],
+    [LZ4_compress_fast_continue],
     [LZ4_LIBS="-llz4"]
 )
+
+# -----------------------------------------------------------------------------
+# zstd
+
+AC_CHECK_LIB([zstd], [ZSTD_createCStream, ZSTD_createDStream],
+             [LIBZSTD_FOUND=yes],
+             [LIBZSTD_FOUND=no])
+
+if test "x$LIBZSTD_FOUND" = "xyes"; then
+    AC_DEFINE([ENABLE_ZSTD], [1], [libzstd usability])
+    OPTIONAL_ZSTD_LIBS="-lzstd"
+fi
+
+# -----------------------------------------------------------------------------
+# brotli
+
+AC_CHECK_LIB([brotlienc], [BrotliEncoderCreateInstance, BrotliEncoderCompressStream],
+             [LIBBROTLIENC_FOUND=yes],
+             [LIBBROTLIENC_FOUND=no])
+
+if test "x$LIBBROTLIENC_FOUND" = "xyes"; then
+    AC_DEFINE([ENABLE_BROTLIENC], [1], [libbrotlienc usability])
+    OPTIONAL_BROTLIENC_LIBS="-lbrotlienc"
+fi
+
+AC_CHECK_LIB([brotlidec], [BrotliDecoderCreateInstance, BrotliDecoderDecompressStream],
+             [LIBBROTLIDEC_FOUND=yes],
+             [LIBBROTLIDEC_FOUND=no])
+
+if test "x$LIBBROTLIDEC_FOUND" = "xyes"; then
+    AC_DEFINE([ENABLE_BROTLIDEC], [1], [libbrotlidec usability])
+    OPTIONAL_BROTLIDEC_LIBS="-lbrotlidec"
+fi
 
 # -----------------------------------------------------------------------------
 # zlib
@@ -644,7 +683,7 @@ AC_C_BIGENDIAN([],
     [AC_MSG_ERROR([Could not find out system endiannnes])])
 
 AC_CHECK_SIZEOF(void *)
-if test "$ac_cv_sizeof_void_p" = 8; then 
+if test "$ac_cv_sizeof_void_p" = 8; then
     AC_MSG_RESULT(Detected 64-bit Build Environment)
     	LIBJUDY_CFLAGS="$LIBJUDY_CFLAGS -DJU_64BIT"
 else 
@@ -696,7 +735,7 @@ if test "${enable_lz4}" != "no"; then
         AC_TRY_LINK(
             [ #include <lz4.h> ],
             [
-                LZ4_stream_t* stream = LZ4_initStream(NULL, 0);
+                LZ4_stream_t* stream = LZ4_createStream();
             ],
             [ enable_lz4="yes"],
             [ enable_lz4="no" ]
@@ -895,9 +934,6 @@ if test "${enable_h2o}" != "no"; then
         OPTIONAL_SSL_CFLAGS="${SSL_CFLAGS}"
         OPTIONAL_SSL_LIBS="${SSL_LIBS}"
     else
-        can_build_h2o="no"
-    fi
-    if test "${with_zlib}" != "yes"; then
         can_build_h2o="no"
     fi
     AC_MSG_RESULT([${can_build_h2o}])
@@ -1105,6 +1141,70 @@ fi
 AC_MSG_RESULT([${enable_plugin_freeipmi}])
 AM_CONDITIONAL([ENABLE_PLUGIN_FREEIPMI], [test "${enable_plugin_freeipmi}" = "yes"])
 
+
+# -----------------------------------------------------------------------------
+# systemd-journal.plugin - systemd
+
+LIBS_BAK="${LIBS}"
+
+AC_CHECK_LIB([systemd], [sd_journal_open], [have_systemd_libs=yes], [have_systemd_libs=no])
+AC_CHECK_HEADERS([systemd/sd-journal.h], [have_systemd_journal_header=yes], [have_systemd_journal_header=no])
+
+if test "${have_systemd_libs}" = "yes" -a "${have_systemd_journal_header}" = "yes"; then
+    have_systemd="yes"
+else
+    have_systemd="no"
+fi
+
+test "${enable_plugin_systemd_journal}" = "yes" -a "${have_systemd}" != "yes" && \
+    AC_MSG_ERROR([systemd is required but not found. Try installing 'libsystemd-dev' or 'libsystemd-devel'])
+
+AC_MSG_CHECKING([if systemd-journal.plugin should be enabled])
+if test "${enable_plugin_systemd_journal}" != "no" -a "${have_systemd}" = "yes"; then
+    enable_plugin_systemd_journal="yes"
+    AC_DEFINE([HAVE_SYSTEMD], [1], [systemd usability])
+    OPTIONAL_SYSTEMD_CFLAGS="-I/usr/include"
+    OPTIONAL_SYSTEMD_LIBS="-lsystemd"
+else
+    enable_plugin_systemd_journal="no"
+fi
+AC_MSG_RESULT([${enable_plugin_systemd_journal}])
+AM_CONDITIONAL([ENABLE_PLUGIN_SYSTEMD_JOURNAL], [test "${enable_plugin_systemd_journal}" = "yes"])
+
+AC_CHECK_LIB([systemd], [sd_journal_open_files_fd], [have_sd_journal_open_files_fd=yes], [have_sd_journal_open_files_fd=no])
+if test "${have_sd_journal_open_files_fd}" = "yes"; then
+    AC_DEFINE([HAVE_SD_JOURNAL_OPEN_FILES_FD], [1], [sd_journal_open_files_fd usability])
+fi
+
+AC_CHECK_LIB([systemd], [sd_journal_restart_fields], [have_sd_journal_restart_fields=yes], [have_sd_journal_restart_fields=no])
+if test "${have_sd_journal_restart_fields}" = "yes"; then
+    AC_DEFINE([HAVE_SD_JOURNAL_RESTART_FIELDS], [1], [sd_journal_restart_fields usability])
+fi
+
+AC_CHECK_LIB([systemd], [sd_bus_default_system, sd_bus_call_method, sd_bus_message_enter_container, sd_bus_message_read, sd_bus_message_exit_container],
+             [SYSTEMD_DBUS_FOUND=yes],
+             [SYSTEMD_DBUS_FOUND=no])
+
+if test "x$SYSTEMD_DBUS_FOUND" = "xyes"; then
+    AC_DEFINE([ENABLE_SYSTEMD_DBUS], [1], [libsystemd dbus usability])
+fi
+
+AC_MSG_NOTICE([OPTIONAL_SYSTEMD_LIBS is set to: ${OPTIONAL_SYSTEMD_LIBS}])
+
+if test "${enable_plugin_systemd_journal}" = "yes"; then
+    AC_MSG_CHECKING([for SD_JOURNAL_OS_ROOT in systemd])
+    AC_COMPILE_IFELSE(
+        [AC_LANG_PROGRAM(
+            [[#include <systemd/sd-journal.h>]],
+            [[int x = SD_JOURNAL_OS_ROOT;]]
+        )],
+        [AC_DEFINE(HAVE_SD_JOURNAL_OS_ROOT, 1, [Define if SD_JOURNAL_OS_ROOT is available])
+            AC_MSG_RESULT(yes)],
+            [AC_MSG_RESULT(no)]
+    )
+fi
+
+LIBS="${LIBS_BAK}"
 
 # -----------------------------------------------------------------------------
 # cups.plugin - libcups
@@ -1838,6 +1938,9 @@ AC_SUBST([OPTIONAL_MATH_LIBS])
 AC_SUBST([OPTIONAL_DATACHANNEL_LIBS])
 AC_SUBST([OPTIONAL_UV_LIBS])
 AC_SUBST([OPTIONAL_LZ4_LIBS])
+AC_SUBST([OPTIONAL_BROTLIENC_LIBS])
+AC_SUBST([OPTIONAL_BROTLIDEC_LIBS])
+AC_SUBST([OPTIONAL_ZSTD_LIBS])
 AC_SUBST([OPTIONAL_SSL_LIBS])
 AC_SUBST([OPTIONAL_JSONC_LIBS])
 AC_SUBST([OPTIONAL_YAML_LIBS])
@@ -1874,6 +1977,7 @@ AC_SUBST([OPTIONAL_GTEST_CFLAGS])
 AC_SUBST([OPTIONAL_GTEST_LIBS])
 AC_SUBST([OPTIONAL_ML_CFLAGS])
 AC_SUBST([OPTIONAL_ML_LIBS])
+AC_SUBST(OPTIONAL_SYSTEMD_LIBS)
 
 # -----------------------------------------------------------------------------
 # Check if cmocka is available - needed for unit testing
@@ -1937,6 +2041,7 @@ AC_CONFIG_FILES([
     collectors/tc.plugin/Makefile
     collectors/xenstat.plugin/Makefile
     collectors/perf.plugin/Makefile
+    collectors/systemd-journal.plugin/Makefile
     daemon/Makefile
     database/Makefile
     database/contexts/Makefile
@@ -1968,6 +2073,8 @@ AC_CONFIG_FILES([
     libnetdata/dictionary/Makefile
     libnetdata/ebpf/Makefile
     libnetdata/eval/Makefile
+    libnetdata/facets/Makefile
+    libnetdata/functions_evloop/Makefile
     libnetdata/july/Makefile
     libnetdata/locks/Makefile
     libnetdata/log/Makefile
@@ -1992,6 +2099,7 @@ AC_CONFIG_FILES([
     web/Makefile
     web/api/Makefile
     web/api/badges/Makefile
+    web/api/ilove/Makefile
     web/api/exporters/Makefile
     web/api/exporters/shell/Makefile
     web/api/exporters/prometheus/Makefile

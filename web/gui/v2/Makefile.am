@@ -5,74 +5,117 @@
 MAINTAINERCLEANFILES = $(srcdir)/Makefile.in
 
 dist_noinst_DATA = \
-    $(srcdir)/README.md \
-    $(srcdir)/LICENSE.md
+    $(srcdir)/README.md
 
 webv2dir=$(webdir)/v2
 
 dist_webv2_DATA = \
-    $(srcdir)/102.17aa0264e26dca186379.chunk.js \
-    $(srcdir)/137.de2e733f582f64cad1cf.chunk.js \
-    $(srcdir)/18.c0d35b9d3651f2926247.chunk.js \
-    $(srcdir)/193.9784069d084ddfe4fc58.chunk.js \
-    $(srcdir)/20.8e903ddcd231de612dd1.chunk.js \
-    $(srcdir)/241.ceb939c3439523e12eed.chunk.js \
-    $(srcdir)/252.0ce2558c909b9913ec26.chunk.js \
-    $(srcdir)/282.b554eb54189aafeebb91.chunk.js \
-    $(srcdir)/296.debf8c655d29ffce5deb.chunk.js \
-    $(srcdir)/359.117da1c355c991bc1536.chunk.js \
-    $(srcdir)/360.fad154c858b78a20d8f5.chunk.js \
-    $(srcdir)/367.cf3f661f1c7bdb62b59b.chunk.js \
-    $(srcdir)/370.384da655707f4c3b6153.css \
-    $(srcdir)/370.b325df5122104f76cd4f.chunk.js \
-    $(srcdir)/376.ce2d4577bc3aaaa82b0c.js \
-    $(srcdir)/380.b8d7517354695cf1a14b.chunk.js \
-    $(srcdir)/380.ccb665950325037c0dda.css \
+    $(srcdir)/1178.acd2efed6da9307eaec0.chunk.js \
+    $(srcdir)/1193.54565d2c06a19d0971c6.chunk.js \
+    $(srcdir)/1277.554c3e0d2d2565d8edb1.chunk.js \
+    $(srcdir)/1277.554c3e0d2d2565d8edb1.chunk.js.LICENSE.txt \
+    $(srcdir)/1282.8353810dada9afed4a8e.js \
+    $(srcdir)/1452.3f10dd8a84305e6267c1.chunk.js \
+    $(srcdir)/2065.f6463d266638f9e55647.chunk.js \
+    $(srcdir)/2065.f6463d266638f9e55647.chunk.js.LICENSE.txt \
+    $(srcdir)/2406.9471a6785a668030f2e0.js \
+    $(srcdir)/2406.9471a6785a668030f2e0.js.LICENSE.txt \
+    $(srcdir)/2533.5b35d929ccee7d99b75a.js \
+    $(srcdir)/2533.5b35d929ccee7d99b75a.js.LICENSE.txt \
+    $(srcdir)/2713.c054a25c596f6642a37a.chunk.js \
+    $(srcdir)/2773.72e0bc78a3f773690a8a.chunk.js \
+    $(srcdir)/285.23e9698b3c9f8a0cd302.chunk.js \
+    $(srcdir)/2934.3f2264e5549799b0e3ce.chunk.js \
+    $(srcdir)/3169.6568875d0a1a5168dfc8.chunk.js \
+    $(srcdir)/3241.b158888c40cac1413545.chunk.js \
+    $(srcdir)/3253.3b7c4c82368430f16f85.chunk.js \
+    $(srcdir)/3253.89070793921be1288bb5.css \
+    $(srcdir)/3423.4ef0b8e0103b31dad4e2.js \
+    $(srcdir)/3423.4ef0b8e0103b31dad4e2.js.LICENSE.txt \
+    $(srcdir)/3564.0ace17b5d5411636a2ca.chunk.js \
+    $(srcdir)/3981.ccb665950325037c0dda.css \
     $(srcdir)/3D_PARTY_LICENSES.txt \
-    $(srcdir)/43.e139da6e48a4308e3cf9.chunk.js \
-    $(srcdir)/440.82afa1467d7c5912d8a3.chunk.js \
-    $(srcdir)/442.5189af01dfd7a61ba40e.chunk.js \
-    $(srcdir)/451.f9d139bad9fab4ae284e.chunk.js \
-    $(srcdir)/470.66f8d3453ba22aaf59a4.chunk.js \
-    $(srcdir)/471.6c89d0196ad91bf90026.chunk.js \
-    $(srcdir)/510.fe83a8e48e12c14f8a0d.chunk.js \
-    $(srcdir)/514.ec684ba16b52bc75806a.chunk.js \
-    $(srcdir)/533.fce31f51b4cd0d80431f.chunk.js \
-    $(srcdir)/564.cfb9f016d7ca91bf1f08.chunk.js \
-    $(srcdir)/575.66c199aa3d69cf00c3f2.chunk.js \
-    $(srcdir)/597.e016f0724a013f625e39.chunk.js \
-    $(srcdir)/610.6152d96681e6cfc6f2a2.chunk.js \
-    $(srcdir)/655.67b53d6b6e9d27b4a42f.chunk.js \
-    $(srcdir)/663.4d152adafa970bb87d62.chunk.js \
-    $(srcdir)/709.b63f3383f748847da537.chunk.js \
-    $(srcdir)/714.b3173197d7dc5e16cc3e.chunk.js \
-    $(srcdir)/722.fe99e9077a2c17b765b6.chunk.js \
-    $(srcdir)/723.71890dcc2eb1733f246f.chunk.js \
-    $(srcdir)/723.cc9fa5f3bdc0bf3ab2fc.css \
-    $(srcdir)/817.6e7799a5b5165571e3aa.chunk.js \
-    $(srcdir)/837.935d02101181aff72447.chunk.js \
-    $(srcdir)/851.590f9e758e12dbe1bb25.chunk.js \
-    $(srcdir)/86.9f4a6baa2ee824be04cc.chunk.js \
-    $(srcdir)/934.32aedee30124d08593f8.chunk.js \
-    $(srcdir)/969.4369033ce0ca17cd78e2.chunk.js \
+    $(srcdir)/4256.b37975b8d12e8840de1f.chunk.js \
+    $(srcdir)/4586.4d2bc0e6dea2c9dd840e.js \
+    $(srcdir)/4586.4d2bc0e6dea2c9dd840e.js.LICENSE.txt \
+    $(srcdir)/4744.cc64f6aa4624ac4373e8.chunk.js \
+    $(srcdir)/4814.08191672606b5bdc52cb.chunk.js \
+    $(srcdir)/4934.1a389698e12c91206afc.chunk.js \
+    $(srcdir)/505.d42cfee1ec9c7df5c376.chunk.js \
+    $(srcdir)/5100.4d45af09a622f36bc8f1.chunk.js \
+    $(srcdir)/5158.e2567f5e9de435f903a8.js \
+    $(srcdir)/5158.e2567f5e9de435f903a8.js.LICENSE.txt \
+    $(srcdir)/5575.cc916fe5f997f7de8176.chunk.js \
+    $(srcdir)/5575.cc916fe5f997f7de8176.chunk.js.LICENSE.txt \
+    $(srcdir)/5756.06574c7606b8fc97c50d.chunk.js \
+    $(srcdir)/5831.7245a454f6a307228a54.chunk.js \
+    $(srcdir)/5831.89070793921be1288bb5.css \
+    $(srcdir)/5969.546098d712a66d5e268d.chunk.js \
+    $(srcdir)/597.33482cf4a44e8bb89a3d.chunk.js \
+    $(srcdir)/6129.491442afc2ff02bd1824.chunk.js \
+    $(srcdir)/6152.81b68ce34d7b62db5c2b.js \
+    $(srcdir)/6181.6e26bbe653fd1bca9c73.chunk.js \
+    $(srcdir)/6187.4a142f480a875e567e1c.js \
+    $(srcdir)/6187.4a142f480a875e567e1c.js.LICENSE.txt \
+    $(srcdir)/6347.e9ad09d3c8afcf16a406.chunk.js \
+    $(srcdir)/6450.d97a08104fb7fccd6011.chunk.js \
+    $(srcdir)/6502.a8b8014543de5052e7a3.chunk.js \
+    $(srcdir)/6610.906143b7d99bbf0c996e.chunk.js \
+    $(srcdir)/6723.02d0f978ee4157330fbc.chunk.js \
+    $(srcdir)/6723.cc9fa5f3bdc0bf3ab2fc.css \
+    $(srcdir)/6817.b21eb5e094f8a57fc80a.chunk.js \
+    $(srcdir)/6876.a45dc063ef75626123af.chunk.js \
+    $(srcdir)/7068.9a128a1b7e96fe50a59f.chunk.js \
+    $(srcdir)/7076.25d537ea89a5d82c9497.chunk.js \
+    $(srcdir)/7154.6c0e19b997d0a45e91a6.chunk.js \
+    $(srcdir)/7514.ce0278c36b58e91e8cbf.chunk.js \
+    $(srcdir)/7514.ce0278c36b58e91e8cbf.chunk.js.LICENSE.txt \
+    $(srcdir)/7848.7f774a963f8dc3a2e60d.chunk.js \
+    $(srcdir)/7848.89070793921be1288bb5.css \
+    $(srcdir)/7882.576da4e194a7e4007f03.css \
+    $(srcdir)/7882.f92488c42f3437acb424.chunk.js \
+    $(srcdir)/7882.f92488c42f3437acb424.chunk.js.LICENSE.txt \
+    $(srcdir)/8099.b81a71d8bc2475b2dfda.js \
+    $(srcdir)/8099.b81a71d8bc2475b2dfda.js.LICENSE.txt \
+    $(srcdir)/8102.9475f16686c4c90ec9a6.chunk.js \
+    $(srcdir)/8584.fe5f72990a2fecfa88e2.chunk.js \
+    $(srcdir)/8663.e14333cfa0b98276b817.chunk.js \
+    $(srcdir)/88.d1e7e9626685e175a07a.chunk.js \
+    $(srcdir)/8977.7fbed956c22f464508db.chunk.js \
+    $(srcdir)/9020.6d08460bfa763b2e858a.chunk.js \
+    $(srcdir)/9201.f4247459d7050877b4f2.chunk.js \
+    $(srcdir)/923.67a29db1587d29358d37.chunk.js \
+    $(srcdir)/9360.c0b90b582c411e3ae7b3.chunk.js \
+    $(srcdir)/9510.2c8d1f73285550307fd6.chunk.js \
+    $(srcdir)/9710.2a9d951e0b123154b438.chunk.js \
+    $(srcdir)/9768.d88a507600a78d8859c1.chunk.js \
+    $(srcdir)/9893.5f061b3ad1dc8bc1ec5e.chunk.js \
+    $(srcdir)/9895.ad6ac7326ec8b7083ac1.chunk.js \
+    $(srcdir)/9975.df09486a04a7863cf956.chunk.js \
+    $(srcdir)/LICENSE.md \
     $(srcdir)/agent.html \
-    $(srcdir)/app.0917ff2bf5d3b8b0678d.css \
-    $(srcdir)/app.6ab19a21fbb78d48c8f6.js \
+    $(srcdir)/allFiles.6.59.0.json \
+    $(srcdir)/allFiles.6.json \
+    $(srcdir)/app.44c6c9746959991bb615.js \
+    $(srcdir)/app.cb2e9f9a81cf9533384e.css \
+    $(srcdir)/apple-app-site-association \
     $(srcdir)/bundlesManifest.6.json \
-    $(srcdir)/editor.a3a8ebf852f1b5b77f53.chunk.js \
+    $(srcdir)/editor.12c7dc64792ae24c926a.chunk.js \
     $(srcdir)/favicon.ico \
     $(srcdir)/index.html \
     $(srcdir)/local-agent.html \
-    $(srcdir)/npm.react.dom.512b66551e07201cd4f2.js \
+    $(srcdir)/npm.react.dom.bb1d2a9ad379555636f0.js \
+    $(srcdir)/npm.react.dom.bb1d2a9ad379555636f0.js.LICENSE.txt \
     $(srcdir)/registry-access.html \
     $(srcdir)/registry-alert-redirect.html \
     $(srcdir)/registry-hello.html \
-    $(srcdir)/runtime.9143995e93765a6faefd.js \
+    $(srcdir)/runtime.ba87cb96558e1765cc02.js \
     $(srcdir)/sw.js \
     $(NULL)
 
 webv2staticdir=$(webv2dir)/static
 dist_webv2static_DATA = \
+    $(srcdir)/static/apple-app-site-association \
     $(srcdir)/static/splash.css \
     $(NULL)
 
@@ -99,6 +142,7 @@ dist_webv2staticemailimg_DATA = \
 webv2staticimgdir=$(webv2staticdir)/img
 dist_webv2staticimg_DATA = \
     $(srcdir)/static/img/list-style-image.svg \
+    $(srcdir)/static/img/new-dashboard.svg \
     $(srcdir)/static/img/no-filter-results.png \
     $(srcdir)/static/img/no-nodes-room.svg \
     $(srcdir)/static/img/rack.png \
@@ -129,6 +173,7 @@ dist_webv2staticimglogosos_DATA = \
     $(srcdir)/static/img/logos/os/placeholder.svg \
     $(srcdir)/static/img/logos/os/raspberry-pi.svg \
     $(srcdir)/static/img/logos/os/redhat.svg \
+    $(srcdir)/static/img/logos/os/rocky.svg \
     $(srcdir)/static/img/logos/os/suse.svg \
     $(srcdir)/static/img/logos/os/ubuntu.svg \
     $(NULL)

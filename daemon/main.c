@@ -371,6 +371,10 @@ void netdata_cleanup_and_exit(int ret) {
             SERVICE_REPLICATION // replication has to be stopped after STREAMING, because it cleans up ARAL
             , 3 * USEC_PER_SEC);
 
+    delta_shutdown_time("prepare metasync shutdown");
+
+    metadata_sync_shutdown_prepare();
+
     delta_shutdown_time("disable ML detection and training threads");
 
     ml_stop_threads();
@@ -395,10 +399,6 @@ void netdata_cleanup_and_exit(int ret) {
     delta_shutdown_time("clean rrdhost database");
 
     rrdhost_cleanup_all();
-
-    delta_shutdown_time("prepare metasync shutdown");
-
-    metadata_sync_shutdown_prepare();
 
     delta_shutdown_time("stop aclk threads");
 
@@ -440,7 +440,8 @@ void netdata_cleanup_and_exit(int ret) {
             delta_shutdown_time("wait for dbengine collectors to finish");
 
             size_t running = 1;
-            while(running) {
+            size_t count = 10;
+            while(running && count) {
                 running = 0;
                 for (size_t tier = 0; tier < storage_tiers; tier++)
                     running += rrdeng_collectors_running(multidb_ctx[tier]);
@@ -449,7 +450,9 @@ void netdata_cleanup_and_exit(int ret) {
                     error_limit_static_thread_var(erl, 1, 100 * USEC_PER_MS);
                     error_limit(&erl, "waiting for %zu collectors to finish", running);
                     // sleep_usec(100 * USEC_PER_MS);
+                    cleanup_destroyed_dictionaries();
                 }
+                count--;
             }
 
             delta_shutdown_time("wait for dbengine main cache to finish flushing");
@@ -761,7 +764,7 @@ int help(int exitcode) {
             " Support    : https://github.com/netdata/netdata/issues\n"
             " License    : https://github.com/netdata/netdata/blob/master/LICENSE.md\n"
             "\n"
-            " Twitter    : https://twitter.com/linuxnetdata\n"
+            " Twitter    : https://twitter.com/netdatahq\n"
             " LinkedIn   : https://linkedin.com/company/netdata-cloud/\n"
             " Facebook   : https://facebook.com/linuxnetdata/\n"
             "\n"
@@ -787,8 +790,7 @@ int help(int exitcode) {
             "  -W stacksize=N           Set the stacksize (in bytes).\n\n"
             "  -W debug_flags=N         Set runtime tracing to debug.log.\n\n"
             "  -W unittest              Run internal unittests and exit.\n\n"
-            "  -W sqlite-check          Check metadata database integrity and exit.\n\n"
-            "  -W sqlite-fix            Check metadata database integrity, fix if needed and exit.\n\n"
+            "  -W sqlite-meta-recover   Run recovery on the metadata database and exit.\n\n"
             "  -W sqlite-compact        Reclaim metadata database unused space and exit.\n\n"
 #ifdef ENABLE_DBENGINE
             "  -W createdataset=N       Create a DB engine dataset of N seconds and exit.\n\n"
@@ -875,6 +877,10 @@ static void log_init(void) {
 
     setenv("NETDATA_ERRORS_THROTTLE_PERIOD", config_get(CONFIG_SECTION_LOGS, "errors flood protection period"    , ""), 1);
     setenv("NETDATA_ERRORS_PER_PERIOD",      config_get(CONFIG_SECTION_LOGS, "errors to trigger flood protection", ""), 1);
+
+    char *selected_level = config_get(CONFIG_SECTION_LOGS, "severity level", NETDATA_LOG_LEVEL_INFO_STR);
+    global_log_severity_level = log_severity_string_to_severity_level(selected_level);
+    setenv("NETDATA_LOG_SEVERITY_LEVEL", selected_level , 1);
 }
 
 char *initialize_lock_directory_path(char *prefix)
@@ -1332,6 +1338,8 @@ int mrg_unittest(void);
 int julytest(void);
 int pluginsd_parser_unittest(void);
 void replication_initialize(void);
+void bearer_tokens_init(void);
+int unittest_rrdpush_compressions(void);
 
 int main(int argc, char **argv) {
     // initialize the system clocks
@@ -1435,13 +1443,9 @@ int main(int argc, char **argv) {
                         char* createdataset_string = "createdataset=";
                         char* stresstest_string = "stresstest=";
 #endif
-                        if(strcmp(optarg, "sqlite-check") == 0) {
-                            sql_init_database(DB_CHECK_INTEGRITY, 0);
-                            return 0;
-                        }
 
-                        if(strcmp(optarg, "sqlite-fix") == 0) {
-                            sql_init_database(DB_CHECK_FIX_DB, 0);
+                        if(strcmp(optarg, "sqlite-meta-recover") == 0) {
+                            sql_init_database(DB_CHECK_RECOVER, 0);
                             return 0;
                         }
 
@@ -1508,7 +1512,7 @@ int main(int argc, char **argv) {
                             unittest_running = true;
                             return aral_unittest(10000);
                         }
-                        else if(strcmp(optarg, "stringtest") == 0) {
+                        else if(strcmp(optarg, "stringtest") == 0)  {
                             unittest_running = true;
                             return string_unittest(10000);
                         }
@@ -1548,6 +1552,10 @@ int main(int argc, char **argv) {
                         else if(strcmp(optarg, "parsertest") == 0) {
                             unittest_running = true;
                             return pluginsd_parser_unittest();
+                        }
+                        else if(strcmp(optarg, "rrdpush_compressions_test") == 0) {
+                            unittest_running = true;
+                            return unittest_rrdpush_compressions();
                         }
                         else if(strncmp(optarg, createdataset_string, strlen(createdataset_string)) == 0) {
                             optarg += strlen(createdataset_string);
@@ -1897,8 +1905,11 @@ int main(int argc, char **argv) {
 
         // initialize the log files
         open_all_log_files();
+        netdata_log_info("Netdata agent version \""VERSION"\" is starting");
 
         ieee754_doubles = is_system_ieee754_double();
+        if(!ieee754_doubles)
+            globally_disabled_capabilities |= STREAM_CAP_IEEE754;
 
         aral_judy_init();
 
@@ -1907,6 +1918,8 @@ int main(int argc, char **argv) {
         bearer_tokens_init();
 
         replication_initialize();
+
+        rrd_functions_inflight_init();
 
         // --------------------------------------------------------------------
         // get the certificate and start security
@@ -2001,6 +2014,8 @@ int main(int argc, char **argv) {
     // fork, switch user, create pid file, set process priority
     if(become_daemon(dont_fork, user) == -1)
         fatal("Cannot daemonize myself.");
+
+    dyn_conf_init();
 
     netdata_log_info("netdata started on pid %d.", getpid());
 
