@@ -89,7 +89,7 @@ jobs:
       - name: Test Build
         id: build
         if: needs.file-check.outputs.run == 'true'
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v6
         with:
           load: true
           push: false
@@ -158,7 +158,7 @@ jobs:
       - name: Build
         id: build
         if: needs.file-check.outputs.run == 'true'
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v6
         with:
           platforms: ${{ matrix.platforms }}
           load: false
@@ -263,7 +263,7 @@ jobs:
           password: ${{ secrets.NETDATABOT_QUAY_TOKEN }}
       - name: Docker Build
         id: build
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v6
         with:
           platforms: linux/amd64,linux/i386,linux/arm/v7,linux/arm64,linux/ppc64le
           push: ${{ github.repository == 'netdata/netdata' }}
@@ -375,7 +375,7 @@ jobs:
           password: ${{ secrets.NETDATABOT_QUAY_TOKEN }}
       - name: Docker Build
         id: build
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v6
         with:
           platforms: linux/amd64,linux/i386,linux/arm/v7,linux/arm64,linux/ppc64le
           push: ${{ github.repository == 'netdata/netdata' }}
